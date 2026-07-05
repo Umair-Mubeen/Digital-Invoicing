@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Invoice {{ inv.fbr_invoice_number|default:inv.pk }} — Print{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root{--navy:#0A2647;--green:#0D9E72;--green-d:#0a7f5c;--line:#dfe7f0;--muted:#5b6b7f}
+  .inv-page{font-family:'Inter',system-ui,sans-serif;color:#1a2b40;max-width:820px;
+    margin:20px auto;background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:34px 38px;font-size:13px}
+  .toolbar{max-width:820px;margin:16px auto 0;display:flex;gap:10px;justify-content:flex-end}
+  .toolbar a,.toolbar button{padding:9px 16px;border-radius:8px;font-weight:600;font-size:13px;
+    text-decoration:none;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--navy);font-family:inherit}
+  .toolbar .primary{background:var(--green);color:#fff;border-color:var(--green)}
+
+  .inv-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;
+    border-bottom:3px solid var(--navy);padding-bottom:18px;margin-bottom:20px}
+  .inv-head .biz h1{font-size:21px;font-weight:800;color:var(--navy);margin:0 0 4px}
+  .inv-head .biz div{color:var(--muted);font-size:12.5px;line-height:1.6}
+  .inv-head .tag{text-align:right}
+  .inv-head .tag .t{font-size:23px;font-weight:800;color:var(--green-d);letter-spacing:.02em}
+  .inv-head .tag .s{color:var(--muted);font-size:12px;margin-top:2px}
+  .status{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;margin-top:6px}
+  .status.valid{background:#eafaf3;color:var(--green-d)}
+  .status.failed{background:#fdeaea;color:#c0392b}
+
+  .fbr-strip{display:flex;gap:18px;align-items:center;background:#f6fbf9;
+    border:1.5px solid #bfe8d4;border-radius:12px;padding:14px 18px;margin-bottom:20px}
+  .fbr-strip #qr{width:92px;height:92px;background:#fff;padding:5px;border-radius:8px;
+    border:1px solid var(--line);flex-shrink:0}
+  .fbr-strip #qr img,.fbr-strip #qr canvas{width:100%!important;height:100%!important}
+  .fbr-strip .k{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  .fbr-strip .num{font-family:ui-monospace,'SF Mono',monospace;font-size:16.5px;font-weight:800;
+    color:var(--navy);word-break:break-all;margin:2px 0 8px}
+  .fbr-strip .meta{font-size:12px;color:var(--muted)}
+
+  .parties{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+  .party{border:1px solid var(--line);border-radius:10px;padding:13px 16px}
+  .party .h{font-size:10.5px;font-weight:700;color:var(--green-d);text-transform:uppercase;
+    letter-spacing:.05em;margin-bottom:6px}
+  .party .n{font-weight:700;color:var(--navy);font-size:14px}
+  .party div{line-height:1.55;color:#33465e;font-size:12.5px}
+
+  table.it{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:6px}
+  table.it th{background:var(--navy);color:#fff;font-size:10.5px;text-transform:uppercase;
+    letter-spacing:.04em;padding:9px 8px;text-align:left}
+  table.it th.num, table.it td.num{text-align:right}
+  table.it td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+  table.it tr:nth-child(even) td{background:#fafcfe}
+
+  .totals{display:flex;justify-content:flex-end;margin-top:12px}
+  .totals table{border-collapse:collapse;font-size:13px;min-width:280px}
+  .totals td{padding:6px 10px}
+  .totals td:last-child{text-align:right;font-weight:600}
+  .totals tr.grand td{border-top:2px solid var(--navy);font-size:15.5px;font-weight:800;
+    color:var(--green-d);padding-top:10px}
+
+  .foot{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);
+    color:var(--muted);font-size:11px;line-height:1.6;display:flex;justify-content:space-between;gap:20px}
+
+  @media print{
+    body{background:#fff!important}
+    .toolbar, nav, header, footer{display:none!important}
+    .inv-page{border:none;border-radius:0;margin:0;max-width:none;padding:10mm 12mm}
+    @page{margin:8mm}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <a href="{% url 'digital_invoicing:list' %}">← Back to invoices</a>
+  <button class="primary" onclick="window.print()">🖨 Print / Save PDF</button>
+</div>
+
+<div class="inv-page">
+  <!-- Header -->
+  <div class="inv-head">
+    <div class="biz">
+      <h1>{{ inv.seller_business_name }}</h1>
+      <div>NTN/CNIC: {{ inv.seller_ntn_cnic }}<br>
+        {{ inv.seller_address }}, {{ inv.seller_province }}</div>
+    </div>
+    <div class="tag">
+      <div class="t">{{ inv.invoice_type|upper }}</div>
+      <div class="s">Date: {{ inv.invoice_date }}</div>
+      {% if inv.invoice_ref_no %}<div class="s">Ref: {{ inv.invoice_ref_no }}</div>{% endif %}
+      <span class="status {{ inv.status }}">{{ inv.get_status_display }}</span>
+    </div>
+  </div>
+
+  <!-- FBR strip -->
+  <div class="fbr-strip">
+    <div id="qr"></div>
+    <div>
+      <div class="k">FBR Invoice Number</div>
+      <div class="num">{{ inv.fbr_invoice_number|default:"— not validated —" }}</div>
+      <div class="meta">Validated: {{ inv.fbr_dated|default:"—" }} &nbsp;|&nbsp; Digitally reported to FBR (Digital Invoicing)</div>
+    </div>
+  </div>
+
+  <!-- Parties -->
+  <div class="parties">
+    <div class="party">
+      <div class="h">Seller</div>
+      <div class="n">{{ inv.seller_business_name }}</div>
+      <div>NTN/CNIC: {{ inv.seller_ntn_cnic }}<br>{{ inv.seller_address }}, {{ inv.seller_province }}</div>
+    </div>
+    <div class="party">
+      <div class="h">Buyer ({{ inv.buyer_registration_type }})</div>
+      <div class="n">{{ inv.buyer_business_name }}</div>
+      <div>{% if inv.buyer_ntn_cnic %}NTN/CNIC: {{ inv.buyer_ntn_cnic }}<br>{% endif %}
+        {{ inv.buyer_address }}{% if inv.buyer_address %}, {% endif %}{{ inv.buyer_province }}</div>
+    </div>
+  </div>
+
+  <!-- Items -->
+  <table class="it">
+    <thead><tr>
+      <th style="width:28px">#</th><th>HS Code</th><th>Description</th><th>Sale Type</th>
+      <th class="num">Qty</th><th class="num">Value (excl. ST)</th>
+      <th class="num">Rate</th><th class="num">Sales Tax</th>
+      <th class="num">Further Tax</th>
+    </tr></thead>
+    <tbody>
+    {% for it in inv.items.all %}
+      <tr>
+        <td>{{ forloop.counter }}</td>
+        <td>{{ it.hs_code }}</td>
+        <td>{{ it.product_description }}</td>
+        <td>{{ it.sale_type }}{% if it.sro_schedule %} <span style="color:var(--muted)">({{ it.sro_schedule }})</span>{% endif %}</td>
+        <td class="num">{{ it.quantity|floatformat:"-2" }}</td>
+        <td class="num">{{ it.value_excl_st|floatformat:2 }}</td>
+        <td class="num">{{ it.rate }}</td>
+        <td class="num">{{ it.sales_tax|floatformat:2 }}</td>
+        <td class="num">{{ it.further_tax|floatformat:2 }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Totals -->
+  <div class="totals">
+    <table>
+      <tr><td>Value excl. Sales Tax</td><td>Rs {{ inv.total_value|floatformat:2 }}</td></tr>
+      <tr><td>Sales Tax</td><td>Rs {{ inv.total_sales_tax|floatformat:2 }}</td></tr>
+      <tr><td>Further Tax</td><td>Rs {{ inv.total_further_tax|floatformat:2 }}</td></tr>
+      <tr class="grand"><td>INVOICE TOTAL</td><td>Rs {{ inv.invoice_total|floatformat:2 }}</td></tr>
+    </table>
+  </div>
+
+  <!-- Footer -->
+  <div class="foot">
+    <div>This invoice has been electronically transmitted to FBR under the Digital
+      Invoicing system (Rule 150Q, Sales Tax Rules 2006). The QR code and FBR
+      invoice number verify its authenticity.</div>
+    <div style="text-align:right;white-space:nowrap">Generated: {{ inv.created_at|date:"Y-m-d H:i" }}</div>
+  </div>
+</div>
+
+<script>
+  (function(){
+    var num = "{{ inv.fbr_invoice_number|escapejs }}";
+    if(num){
+      new QRCode(document.getElementById('qr'),
+        {text:num, width:92, height:92, colorDark:"#0A2647", colorLight:"#ffffff"});
+    } else {
+      document.getElementById('qr').style.display='none';
+    }
+  })();
+</script>
+{% endblock %}

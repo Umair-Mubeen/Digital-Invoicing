@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Invoices — Digital Invoicing{% endblock %}
+{% block extra_head %}{% include "digital_invoicing/_styles.html" %}{% endblock %}
+{% block content %}
+<div class="di-wrap">
+  <div class="di-top">
+    <div><h1>Invoices</h1><p>All invoices posted through the system</p></div>
+    <a class="btn-g" href="{% url 'digital_invoicing:create' %}">+ New Invoice</a>
+  </div>
+  {% include "digital_invoicing/_nav.html" with active='list' %}
+  <div class="di-card">
+    {% if invoices %}
+    <table class="list">
+      <thead><tr>
+        <th>FBR Number</th><th>Buyer</th><th>Type</th>
+        <th class="num">Total</th><th>Date</th><th>Status</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for inv in invoices %}
+        <tr>
+          <td><span class="fbrno">{{ inv.fbr_invoice_number|default:"—" }}</span></td>
+          <td>{{ inv.buyer_business_name }}</td>
+          <td>{{ inv.invoice_type }}</td>
+          <td class="num" style="font-weight:600">Rs {{ inv.invoice_total|floatformat:0 }}</td>
+          <td style="color:var(--muted)">{{ inv.invoice_date }}</td>
+          <td><span class="pill {{ inv.status }}">{{ inv.get_status_display }}</span></td>
+          <td><a href="{% url 'digital_invoicing:print' inv.pk %}" style="color:var(--green-d);font-weight:600;text-decoration:none">🖨 Print</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <div class="empty">No invoices yet — create your first invoice.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

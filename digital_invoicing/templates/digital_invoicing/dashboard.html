@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Digital Invoicing{% endblock %}
+{% block extra_head %}{% include "digital_invoicing/_styles.html" %}{% endblock %}
+{% block content %}
+<div class="di-wrap">
+  <div class="di-top">
+    <div><h1>Dashboard</h1><p>Compliance snapshot</p></div>
+  </div>
+  {% include "digital_invoicing/_nav.html" with active='dashboard' %}
+  <div class="stats">
+    <div class="stat"><div class="lbl">Invoices posted</div><div class="val">{{ count }}</div></div>
+    <div class="stat"><div class="lbl">Taxable value</div><div class="val">Rs {{ value|floatformat:0 }}</div></div>
+    <div class="stat"><div class="lbl">Sales tax</div><div class="val g">Rs {{ sales_tax|floatformat:0 }}</div></div>
+    <div class="stat"><div class="lbl">Further tax</div><div class="val">Rs {{ further_tax|floatformat:0 }}</div></div>
+  </div>
+  <div class="di-card">
+    <h3>Recent activity</h3>
+    {% if recent %}
+    <table class="list">
+      <thead><tr><th>FBR Number</th><th>Buyer</th><th class="num">Sales Tax</th><th>Date</th></tr></thead>
+      <tbody>
+      {% for inv in recent %}
+        <tr>
+          <td><span class="fbrno">{{ inv.fbr_invoice_number }}</span></td>
+          <td>{{ inv.buyer_business_name }}</td>
+          <td class="num" style="font-weight:600;color:var(--green-d)">Rs {{ inv.total_sales_tax|floatformat:0 }}</td>
+          <td style="color:var(--muted)">{{ inv.invoice_date }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <div class="empty">Nothing yet — posted invoices will summarise here.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Business Profile — Digital Invoicing{% endblock %}
+{% block extra_head %}{% include "digital_invoicing/_styles.html" %}
+<style>
+  .pf-card{max-width:560px}
+  .pf-card .body{padding:22px}
+  .field{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+  .field label{font-size:11.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+  .field input,.field select{padding:10px 12px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13.5px;background:#fcfdfe}
+  .field input:focus,.field select:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(13,158,114,.1)}
+  .savedmsg{background:var(--soft);color:var(--green-d);border:1px solid #bfe8d4;border-radius:8px;
+    padding:11px 14px;font-weight:600;font-size:13px;margin-bottom:14px}
+  .btn-g{border:none;cursor:pointer;font:inherit;width:100%}
+  .hint{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5}
+</style>
+{% endblock %}
+{% block content %}
+<div class="di-wrap">
+  <div class="di-top">
+    <div><h1>Business Profile</h1><p>Ye details har invoice pe seller ke tor pe use hongi</p></div>
+  </div>
+  {% include "digital_invoicing/_nav.html" with active='profile' %}
+
+  <div class="di-card pf-card">
+    <h3>Seller Details</h3>
+    <div class="body">
+      {% if saved %}<div class="savedmsg">✓ Profile saved — ab invoices is se auto-fill hongi</div>{% endif %}
+      <form method="post">
+        {% csrf_token %}
+        <div class="field">
+          <label>NTN / CNIC *</label>
+          <input name="ntn_cnic" required maxlength="15" placeholder="7-digit NTN ya 13-digit CNIC"
+                 value="{{ profile.ntn_cnic|default:'' }}">
+        </div>
+        <div class="field">
+          <label>Business Name *</label>
+          <input name="business_name" required maxlength="255" placeholder="e.g. Umair Traders"
+                 value="{{ profile.business_name|default:'' }}">
+        </div>
+        <div class="field">
+          <label>Province *</label>
+          <select name="province">
+            {% for p in provinces %}
+              <option {% if profile.province == p %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label>Address *</label>
+          <input name="address" required maxlength="500" placeholder="Business address"
+                 value="{{ profile.address|default:'' }}">
+        </div>
+        <button type="submit" class="btn-g" style="background:var(--green);color:#fff;padding:11px;border-radius:9px;font-weight:700;font-size:14px">Save Profile</button>
+      </form>
+      <div class="hint">💡 NTN/CNIC wahi do jo sales tax registration pe hai — yehi FBR ko invoice ke saath jata hai. Ye details sirf yahan badlengi, invoice form pe nahi.</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
