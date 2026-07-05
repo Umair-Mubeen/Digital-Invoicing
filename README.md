@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # TaxBuddy Digital Invoicing — Ready-to-Run Django Project
 
 FBR Digital Invoicing (DI API v1.12) — complete project, app pre-integrated
@@ -40,3 +41,6 @@ FBR_POST_URL = "https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata"  # producti
   digital_invoicing/tax_engine.py mein adjust karein.
 - Validators = FBR ke official Error Message Guide ke 27+ codes.
 - Commercial launch se pehle ownership structure sort karein.
+=======
+# Digital-Invoicing
+>>>>>>> 80277f4541cdef37e114ef4f19c0c59903f46a04
