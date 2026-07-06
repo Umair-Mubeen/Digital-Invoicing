@@ -19,9 +19,25 @@ from django.shortcuts import render
 from django.views.decorators.http import require_POST
 from django.db.models import Sum, Count
 
-from .models import Invoice, InvoiceItem
+from .models import Invoice, InvoiceItem, AuditLog
 from .tax_engine import compute_item
 from .fbr_client import get_fbr_client
+
+
+def log_event(request, action, **detail):
+    """Har ahem event AuditLog mein save karo (kabhi crash na kare)."""
+    try:
+        user = request.user if request.user.is_authenticated else None
+        AuditLog.objects.create(
+            user=user,
+            username=(user.username if user else detail.pop("username", "")),
+            action=action, detail=detail,
+            ip=(request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
+                or request.META.get("REMOTE_ADDR", "")),
+            path=request.path,
+        )
+    except Exception:
+        pass
 
 
 @login_required
@@ -46,6 +62,49 @@ def submit_invoice(request):
         p["sellerBusinessName"] = profile.business_name
         p["sellerProvince"] = profile.province
         p["sellerAddress"] = profile.address
+
+    # ---- Debit Note: validate against the referenced invoice in DB ----
+    # (mirrors FBR server-side checks: 0057, 0029/0035, 0034, 0067, 0027, 0028)
+    ref_invoice = None
+    if p.get("invoiceType") == "Debit Note":
+        from datetime import datetime, timedelta
+
+        def _fbr_error(code, msg):
+            return JsonResponse({
+                "ok": False, "invoiceId": None, "invoiceNumber": "", "dated": "",
+                "validationResponse": {
+                    "statusCode": "01", "status": "Invalid", "error": msg,
+                    "invoiceStatuses": [{
+                        "itemSNo": "1", "statusCode": "01", "status": "Invalid",
+                        "invoiceNo": "", "errorCode": code, "error": msg}],
+                },
+                "totals": {"value": 0, "salesTax": 0, "furtherTax": 0, "total": 0},
+            })
+
+        ref_no = (p.get("invoiceRefNo") or "").strip()
+        if not ref_no:
+            return _fbr_error("0026", "Invoice Reference No. is mandatory requirement for debit note")
+
+        reason = (p.get("reason") or "").strip()
+        if not reason:
+            return _fbr_error("0027", "Reason is mandatory requirement for debit note")
+        if reason == "Others" and not (p.get("reasonRemarks") or "").strip():
+            return _fbr_error("0028", "Remarks are required where reason is 'Others'")
+
+        ref_invoice = Invoice.objects.filter(
+            owner=request.user, fbr_invoice_number=ref_no, status="valid").first()
+        if not ref_invoice:
+            return _fbr_error("0057", "Reference invoice for debit note does not exist")
+
+        try:
+            dn_date = datetime.strptime(p.get("invoiceDate", ""), "%Y-%m-%d").date()
+        except ValueError:
+            return _fbr_error("0113", "Invoice date is not in proper format (YYYY-MM-DD)")
+
+        if dn_date < ref_invoice.invoice_date:
+            return _fbr_error("0035", "Debit Note date must be greater or same as reference invoice date")
+        if dn_date > ref_invoice.invoice_date + timedelta(days=180):
+            return _fbr_error("0034", "Debit note can only be added within 180 days of reference invoice date")
 
     unreg = p.get("buyerRegistrationType") == "Unregistered"
 
@@ -78,6 +137,25 @@ def submit_invoice(request):
     payload["items"] = clean_items
     invoice_total = total_value + total_st + total_ft
 
+    # Debit note amounts cannot exceed the referenced invoice (error 0067)
+    if ref_invoice is not None:
+        if (total_value > ref_invoice.total_value
+                or total_st > ref_invoice.total_sales_tax
+                or invoice_total > ref_invoice.invoice_total):
+            return JsonResponse({
+                "ok": False, "invoiceId": None, "invoiceNumber": "", "dated": "",
+                "validationResponse": {
+                    "statusCode": "01", "status": "Invalid",
+                    "error": "Debit note amounts exceed referenced invoice",
+                    "invoiceStatuses": [{
+                        "itemSNo": "1", "statusCode": "01", "status": "Invalid",
+                        "invoiceNo": "", "errorCode": "0067",
+                        "error": "Quantity, sale value or tax amounts of the debit note are greater than those of the referenced invoice"}],
+                },
+                "totals": {"value": float(total_value), "salesTax": float(total_st),
+                           "furtherTax": float(total_ft), "total": float(invoice_total)},
+            })
+
     # ---- Call FBR (mock or real, per settings) ----
     client = get_fbr_client()
     result = client.post_invoice(payload)
@@ -100,6 +178,8 @@ def submit_invoice(request):
         buyer_address=payload.get("buyerAddress", ""),
         buyer_registration_type=payload.get("buyerRegistrationType", "Unregistered"),
         invoice_ref_no=payload.get("invoiceRefNo", ""),
+        reason=payload.get("reason", ""),
+        reason_remarks=payload.get("reasonRemarks", ""),
         total_value=total_value,
         total_sales_tax=total_st,
         total_further_tax=total_ft,
@@ -127,6 +207,15 @@ def submit_invoice(request):
             sro_schedule=it.get("sroScheduleNo", ""),
         )
 
+    log_event(request,
+              "invoice_valid" if valid else "invoice_failed",
+              invoice_id=inv.pk,
+              fbr_number=result.get("invoiceNumber", ""),
+              invoice_type=payload.get("invoiceType", ""),
+              total=float(invoice_total),
+              errors=[st.get("errorCode") for st in vr.get("invoiceStatuses", [])
+                      if st.get("errorCode")] if not valid else [])
+
     return JsonResponse({
         "ok": valid,
         "invoiceId": inv.pk,
@@ -144,9 +233,27 @@ def submit_invoice(request):
 
 @login_required
 def invoice_list(request):
-    """Server-rendered invoice list (Django template)."""
-    invoices = Invoice.objects.filter(owner=request.user)
-    return render(request, "digital_invoicing/list.html", {"invoices": invoices})
+    """Server-rendered invoice list — search + status filter + pagination.
+    Data isolation: SIRF request.user ki invoices (owner filter)."""
+    from django.core.paginator import Paginator
+    from django.db.models import Q
+
+    qs = Invoice.objects.filter(owner=request.user)
+    q = request.GET.get("q", "").strip()
+    status = request.GET.get("status", "").strip()
+    if q:
+        qs = qs.filter(Q(fbr_invoice_number__icontains=q) |
+                       Q(buyer_business_name__icontains=q) |
+                       Q(buyer_ntn_cnic__icontains=q))
+    if status in ("valid", "failed"):
+        qs = qs.filter(status=status)
+
+    paginator = Paginator(qs, 20)
+    page = paginator.get_page(request.GET.get("page"))
+    return render(request, "digital_invoicing/list.html", {
+        "page": page, "q": q, "status": status,
+        "total": paginator.count,
+    })
 
 
 @login_required
@@ -173,7 +280,10 @@ def create_invoice(request):
     if not profile:
         from django.shortcuts import redirect
         return redirect("digital_invoicing:profile")
-    return render(request, "digital_invoicing/invoicing.html", {"profile": profile})
+    recent_valid = Invoice.objects.filter(owner=request.user, status="valid")\
+        .values_list("fbr_invoice_number", flat=True)[:50]
+    return render(request, "digital_invoicing/invoicing.html",
+                  {"profile": profile, "recent_valid": recent_valid})
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +358,8 @@ def invoice_print(request, pk):
     """Printable invoice — FBR number + QR + full detail (browser print → PDF)."""
     from django.shortcuts import get_object_or_404
     inv = get_object_or_404(Invoice, pk=pk, owner=request.user)
+    log_event(request, "invoice_printed", invoice_id=inv.pk,
+              fbr_number=inv.fbr_invoice_number)
     return render(request, "digital_invoicing/print.html", {"inv": inv})
 
 
@@ -271,6 +383,63 @@ def seller_profile(request):
         else:
             profile = SellerProfile.objects.create(user=request.user, **data)
         saved = True
+        log_event(request, "profile_saved", business_name=data["business_name"])
     return render(request, "digital_invoicing/profile.html",
                   {"profile": profile, "saved": saved,
                    "provinces": [p[0] for p in SellerProfile.PROVINCES]})
+
+
+# ---------------------------------------------------------------------------
+# Auth: self-service signup / login / logout (SaaS onboarding)
+# ---------------------------------------------------------------------------
+from django.contrib.auth import login as auth_login, logout as auth_logout
+from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
+from django.shortcuts import redirect
+
+
+def signup(request):
+    if request.user.is_authenticated:
+        return redirect("digital_invoicing:create")
+    form = UserCreationForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        user = form.save()
+        # optional email
+        email = (request.POST.get("email") or "").strip()
+        if email:
+            user.email = email
+            user.save(update_fields=["email"])
+        auth_login(request, user)
+        log_event(request, "signup")
+        return redirect("digital_invoicing:profile")   # pehla kaam: business profile
+    return render(request, "digital_invoicing/signup.html", {"form": form})
+
+
+def login_view(request):
+    if request.user.is_authenticated:
+        return redirect("digital_invoicing:create")
+    form = AuthenticationForm(request, data=request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        auth_login(request, form.get_user())
+        log_event(request, "login")
+        nxt = request.GET.get("next") or request.POST.get("next")
+        return redirect(nxt or "digital_invoicing:create")
+    if request.method == "POST":
+        log_event(request, "login_failed",
+                  username=request.POST.get("username", ""))
+    return render(request, "digital_invoicing/login.html",
+                  {"form": form, "next": request.GET.get("next", "")})
+
+
+def logout_view(request):
+    if request.method == "POST":
+        log_event(request, "logout")
+        auth_logout(request)
+    return redirect("digital_invoicing:login")
+
+
+
+@login_required
+def activity(request):
+    """User ki apni activity — audit log (SaaS transparency)."""
+    logs = AuditLog.objects.filter(user=request.user)[:100]
+    return render(request, "digital_invoicing/activity.html", {"logs": logs})

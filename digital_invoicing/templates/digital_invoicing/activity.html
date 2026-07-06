@@ -1,0 +1,37 @@
+{% extends "digital_invoicing/base_di.html" %}
+{% block na_activity %}on{% endblock %}
+{% block di_title_text %}Activity Log{% endblock %}
+{% block di_title %}Activity Log{% endblock %}
+{% block di_subtitle %}Aapke account ki har harkat ka record{% endblock %}
+
+{% block di_content %}
+<div class="di-card">
+  {% if logs %}
+  <table class="list">
+    <thead><tr><th>Waqt</th><th>Action</th><th>Detail</th><th>IP</th></tr></thead>
+    <tbody>
+    {% for l in logs %}
+      <tr>
+        <td style="color:var(--muted);white-space:nowrap">{{ l.created_at|date:"d M Y · H:i" }}</td>
+        <td>
+          {% if l.action == "invoice_valid" %}<span class="pill valid">Invoice validated</span>
+          {% elif l.action == "invoice_failed" %}<span class="pill failed">Invoice rejected</span>
+          {% elif l.action == "login_failed" %}<span class="pill failed">Login failed</span>
+          {% else %}<span class="pill" style="background:#eef2f7;color:var(--navy)">{{ l.get_action_display }}</span>{% endif %}
+        </td>
+        <td style="font-size:12.5px;color:var(--muted)">
+          {% if l.detail.fbr_number %}<span class="fbrno">{{ l.detail.fbr_number }}</span>{% endif %}
+          {% if l.detail.total %} · Rs {{ l.detail.total|floatformat:0 }}{% endif %}
+          {% if l.detail.errors %} · errors: {{ l.detail.errors|join:", " }}{% endif %}
+          {% if l.detail.business_name %}{{ l.detail.business_name }}{% endif %}
+        </td>
+        <td style="color:var(--muted);font-size:12px">{{ l.ip }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="empty">Abhi koi activity nahi.</div>
+  {% endif %}
+</div>
+{% endblock %}

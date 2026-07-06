@@ -1,37 +1,85 @@
-{% extends "base.html" %}
-{% block title %}Invoices — Digital Invoicing{% endblock %}
-{% block extra_head %}{% include "digital_invoicing/_styles.html" %}{% endblock %}
-{% block content %}
-<div class="di-wrap">
-  <div class="di-top">
-    <div><h1>Invoices</h1><p>All invoices posted through the system</p></div>
-    <a class="btn-g" href="{% url 'digital_invoicing:create' %}">+ New Invoice</a>
+{% extends "digital_invoicing/base_di.html" %}
+{% block na_list %}on{% endblock %}
+{% block di_title_text %}Invoices{% endblock %}
+{% block di_title %}Invoices{% endblock %}
+{% block di_subtitle %}{{ total }} invoice{{ total|pluralize }} — sirf aapke account ki{% endblock %}
+{% block di_actions %}<a class="btn-g" href="{% url 'digital_invoicing:create' %}">+ New Invoice</a>{% endblock %}
+
+{% block di_head %}
+<style>
+  .toolbar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+  .search{flex:1;min-width:220px;display:flex;background:#fff;border:1px solid var(--line);
+    border-radius:10px;overflow:hidden}
+  .search input{flex:1;border:none;padding:10px 14px;font:inherit;font-size:13.5px;outline:none;background:transparent;color:var(--navy)}
+  .search button{border:none;background:var(--navy);color:#fff;padding:0 16px;cursor:pointer;font:inherit;font-weight:600;font-size:13px}
+  .fpill{padding:8px 14px;border-radius:20px;font-size:12.5px;font-weight:600;text-decoration:none;
+    border:1px solid var(--line);background:#fff;color:var(--muted)}
+  .fpill.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .pager{display:flex;gap:8px;justify-content:center;align-items:center;padding:14px;font-size:13px;color:var(--muted)}
+  .pager a{padding:7px 13px;border:1px solid var(--line);border-radius:8px;background:#fff;
+    color:var(--navy);text-decoration:none;font-weight:600;font-size:12.5px}
+  .pager a:hover{border-color:var(--green)}
+  .empty-cta{text-align:center;padding:56px 20px}
+  .empty-cta .ico{width:52px;height:52px;border-radius:14px;background:var(--soft);color:var(--green-d);
+    display:grid;place-items:center;margin:0 auto 14px}
+  .empty-cta .ico svg{width:26px;height:26px}
+  .empty-cta b{color:var(--navy);font-size:15px;display:block;margin-bottom:4px}
+  .empty-cta p{color:var(--muted);font-size:13px;margin:0 0 16px}
+</style>
+{% endblock %}
+
+{% block di_content %}
+<form class="toolbar" method="get">
+  <div class="search">
+    <input name="q" value="{{ q }}" placeholder="FBR number, buyer name ya NTN se dhundo…">
+    <button type="submit">Search</button>
   </div>
-  {% include "digital_invoicing/_nav.html" with active='list' %}
-  <div class="di-card">
-    {% if invoices %}
-    <table class="list">
-      <thead><tr>
-        <th>FBR Number</th><th>Buyer</th><th>Type</th>
-        <th class="num">Total</th><th>Date</th><th>Status</th><th></th>
-      </tr></thead>
-      <tbody>
-      {% for inv in invoices %}
-        <tr>
-          <td><span class="fbrno">{{ inv.fbr_invoice_number|default:"—" }}</span></td>
-          <td>{{ inv.buyer_business_name }}</td>
-          <td>{{ inv.invoice_type }}</td>
-          <td class="num" style="font-weight:600">Rs {{ inv.invoice_total|floatformat:0 }}</td>
-          <td style="color:var(--muted)">{{ inv.invoice_date }}</td>
-          <td><span class="pill {{ inv.status }}">{{ inv.get_status_display }}</span></td>
-          <td><a href="{% url 'digital_invoicing:print' inv.pk %}" style="color:var(--green-d);font-weight:600;text-decoration:none">🖨 Print</a></td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
+  <a class="fpill {% if not status %}on{% endif %}" href="?q={{ q|urlencode }}">All</a>
+  <a class="fpill {% if status == 'valid' %}on{% endif %}" href="?q={{ q|urlencode }}&status=valid">✓ Valid</a>
+  <a class="fpill {% if status == 'failed' %}on{% endif %}" href="?q={{ q|urlencode }}&status=failed">✗ Failed</a>
+</form>
+
+<div class="di-card">
+  {% if page.object_list %}
+  <table class="list">
+    <thead><tr>
+      <th>FBR Number</th><th>Buyer</th><th>Type</th>
+      <th class="num">Total</th><th>Date</th><th>Status</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for inv in page.object_list %}
+      <tr>
+        <td><span class="fbrno">{{ inv.fbr_invoice_number|default:"—" }}</span></td>
+        <td>{{ inv.buyer_business_name }}</td>
+        <td>{{ inv.invoice_type }}</td>
+        <td class="num" style="font-weight:600">Rs {{ inv.invoice_total|floatformat:0 }}</td>
+        <td style="color:var(--muted)">{{ inv.invoice_date }}</td>
+        <td><span class="pill {{ inv.status }}">{{ inv.get_status_display }}</span></td>
+        <td><a href="{% url 'digital_invoicing:print' inv.pk %}" style="color:var(--green-d);font-weight:600;text-decoration:none">🖨 Print</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if page.paginator.num_pages > 1 %}
+  <div class="pager">
+    {% if page.has_previous %}<a href="?q={{ q|urlencode }}&status={{ status }}&page={{ page.previous_page_number }}">← Prev</a>{% endif %}
+    <span>Page {{ page.number }} / {{ page.paginator.num_pages }}</span>
+    {% if page.has_next %}<a href="?q={{ q|urlencode }}&status={{ status }}&page={{ page.next_page_number }}">Next →</a>{% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="empty-cta">
+    <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 2h6a2 2 0 0 1 2 2v16l-5-3-5 3V4a2 2 0 0 1 2-2z"/></svg></div>
+    {% if q or status %}
+      <b>Kuch nahi mila</b>
+      <p>Search ya filter badal ke dekho.</p>
+      <a class="btn-g" href="{% url 'digital_invoicing:list' %}">Clear filters</a>
     {% else %}
-      <div class="empty">No invoices yet — create your first invoice.</div>
+      <b>Abhi koi invoice nahi</b>
+      <p>Pehli FBR invoice banao — 1 minute ka kaam.</p>
+      <a class="btn-g" href="{% url 'digital_invoicing:create' %}">+ Create your first invoice</a>
     {% endif %}
   </div>
+  {% endif %}
 </div>
 {% endblock %}

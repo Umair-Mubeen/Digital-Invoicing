@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Login — TaxBuddy Digital Invoicing{% endblock %}
+{% block extra_head %}{% include "digital_invoicing/_auth_styles.html" %}{% endblock %}
+{% block content %}
+<div class="auth">
+  <div class="brand">
+    <div class="mark">TB</div>
+    <div><b>TaxBuddy</b><span>Digital Invoicing</span></div>
+  </div>
+  <h1>Welcome back</h1>
+  <div class="sub">Apne account mein login karein</div>
+
+  {% if form.errors %}<div class="err">Username ya password ghalat hai — dobara koshish karein.</div>{% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next }}">
+    <div class="f"><label>Username</label>
+      <input name="username" required autofocus autocomplete="username"></div>
+    <div class="f"><label>Password</label>
+      <input type="password" name="password" required autocomplete="current-password"></div>
+    <button class="bsub" type="submit">Login</button>
+  </form>
+  <div class="alt">Account nahi hai? <a href="{% url 'digital_invoicing:signup' %}">Sign up karein</a></div>
+</div>
+{% endblock %}

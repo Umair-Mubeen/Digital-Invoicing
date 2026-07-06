@@ -1,0 +1,27 @@
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{--navy:#0A2647;--green:#0D9E72;--green-d:#0a7f5c;--line:#e4ebf3;--muted:#5b6b7f;--danger:#c0392b}
+  body{margin:0;background:linear-gradient(160deg,#0A2647 0%,#0e3055 55%,#0D9E72 160%);
+    font-family:'Inter',system-ui,sans-serif;min-height:100vh;display:grid;place-items:center;padding:20px;box-sizing:border-box}
+  .auth{background:#fff;border-radius:18px;box-shadow:0 24px 70px rgba(4,16,32,.45);
+    width:100%;max-width:400px;padding:34px 32px;box-sizing:border-box}
+  .auth .brand{display:flex;align-items:center;gap:11px;margin-bottom:22px}
+  .auth .mark{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,var(--green),#12c98d);
+    display:grid;place-items:center;color:#fff;font-weight:800;font-size:16px}
+  .auth .brand b{color:var(--navy);font-size:17px;display:block;line-height:1.1}
+  .auth .brand span{color:var(--green-d);font-size:11.5px;font-weight:600}
+  .auth h1{font-size:19px;color:var(--navy);margin:0 0 4px;font-weight:800}
+  .auth .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+  .f{display:flex;flex-direction:column;gap:5px;margin-bottom:13px}
+  .f label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .f input{padding:11px 12px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:14px;background:#fcfdfe}
+  .f input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(13,158,114,.12)}
+  .err{background:#fdeaea;border:1px solid #f3c9c9;color:var(--danger);border-radius:9px;
+    padding:10px 13px;font-size:12.5px;margin-bottom:13px;line-height:1.45}
+  .bsub{width:100%;background:var(--green);color:#fff;border:none;border-radius:10px;padding:12px;
+    font:inherit;font-weight:700;font-size:14.5px;cursor:pointer;margin-top:4px}
+  .bsub:hover{background:var(--green-d)}
+  .alt{text-align:center;font-size:13px;color:var(--muted);margin-top:16px}
+  .alt a{color:var(--green-d);font-weight:700;text-decoration:none}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.45}
+</style>

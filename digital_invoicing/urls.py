@@ -13,6 +13,11 @@ urlpatterns = [
     path("dashboard/", views.dashboard, name="dashboard"),
     path("create/", views.create_invoice, name="create"),
     path("profile/", views.seller_profile, name="profile"),
+    path("activity/", views.activity, name="activity"),
+    # Auth (self-service SaaS onboarding)
+    path("signup/", views.signup, name="signup"),
+    path("login/", views.login_view, name="login"),
+    path("logout/", views.logout_view, name="logout"),
     # Reference data (dropdowns / autocomplete / buyer check)
     path("reference/provinces/", views.ref_provinces, name="ref_provinces"),
     path("reference/uom/", views.ref_uom, name="ref_uom"),

@@ -58,6 +58,8 @@ class Invoice(models.Model):
     buyer_registration_type = models.CharField(max_length=20,
                                                default="Unregistered")
     invoice_ref_no = models.CharField(max_length=100, blank=True)
+    reason = models.CharField(max_length=100, blank=True)          # debit note reason
+    reason_remarks = models.CharField(max_length=500, blank=True)  # required if reason = Others
 
     # computed totals
     total_value = models.DecimalField(max_digits=16, decimal_places=2, default=0)
@@ -127,3 +129,29 @@ class SellerProfile(models.Model):
 
     def __str__(self):
         return f"{self.business_name} ({self.ntn_cnic})"
+
+
+class AuditLog(models.Model):
+    """Har ahem event ka record — kaun, kya, kab, kis IP se. Audit trail."""
+    ACTIONS = [
+        ("signup", "Signup"), ("login", "Login"), ("login_failed", "Login failed"),
+        ("logout", "Logout"), ("profile_saved", "Profile saved"),
+        ("invoice_valid", "Invoice validated"), ("invoice_failed", "Invoice rejected"),
+        ("invoice_printed", "Invoice printed"),
+    ]
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                             on_delete=models.SET_NULL, related_name="audit_logs")
+    username = models.CharField(max_length=150, blank=True)   # snapshot (user delete ho to bhi rahe)
+    action = models.CharField(max_length=30, choices=ACTIONS)
+    detail = models.JSONField(default=dict, blank=True)
+    ip = models.CharField(max_length=45, blank=True)
+    path = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["user", "-created_at"]),
+                   models.Index(fields=["action"])]
+
+    def __str__(self):
+        return f"{self.username or 'anon'} · {self.action} · {self.created_at:%Y-%m-%d %H:%M}"

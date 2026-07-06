@@ -1,6 +1,6 @@
 """admin.py — surface invoices in your existing Django admin panel."""
 from django.contrib import admin
-from .models import Invoice, InvoiceItem, Buyer, SellerProfile
+from .models import Invoice, InvoiceItem, Buyer, SellerProfile, AuditLog
 
 
 class InvoiceItemInline(admin.TabularInline):
@@ -31,3 +31,15 @@ class BuyerAdmin(admin.ModelAdmin):
 class SellerProfileAdmin(admin.ModelAdmin):
     list_display = ("business_name", "ntn_cnic", "province", "user")
     search_fields = ("business_name", "ntn_cnic", "user__username")
+
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "username", "action", "ip", "path")
+    list_filter = ("action", "created_at")
+    search_fields = ("username", "ip", "path")
+    readonly_fields = [f.name for f in AuditLog._meta.fields]
+
+    def has_add_permission(self, r):    return False
+    def has_change_permission(self, r, obj=None): return False
+    def has_delete_permission(self, r, obj=None): return False
