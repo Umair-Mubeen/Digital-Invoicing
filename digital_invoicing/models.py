@@ -42,7 +42,10 @@ class Invoice(models.Model):
     invoice_date = models.DateField()
     scenario_id = models.CharField(max_length=10, blank=True)   # sandbox only
 
-    # seller (the account's own business profile — usually pre-filled)
+    # seller — kaunse business se issue hui (snapshot fields neeche)
+    seller_profile = models.ForeignKey("SellerProfile", null=True, blank=True,
+                                       on_delete=models.SET_NULL,
+                                       related_name="invoices")
     seller_ntn_cnic = models.CharField(max_length=15)
     seller_business_name = models.CharField(max_length=255)
     seller_province = models.CharField(max_length=30)
@@ -115,12 +118,13 @@ class InvoiceItem(models.Model):
 
 
 class SellerProfile(models.Model):
-    """Each user's own business profile — auto-fills the seller side of
-    every invoice. The foundation for multi-tenant use."""
+    """User ke businesses/suppliers — EK user ke MULTIPLE ho sakte hain
+    (practitioner clients ke liye, ya apne 2-3 registered businesses).
+    Invoice banate waqt dropdown se select hota hai."""
     PROVINCES = Buyer.PROVINCES
 
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
-                                related_name="seller_profile")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="seller_profiles")
     ntn_cnic = models.CharField("NTN / CNIC", max_length=15)
     business_name = models.CharField(max_length=255)
     province = models.CharField(max_length=30, choices=PROVINCES, default="Sindh")

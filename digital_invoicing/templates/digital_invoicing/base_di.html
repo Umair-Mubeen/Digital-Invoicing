@@ -49,9 +49,9 @@ THIS template and fill:
     </nav>
     <div class="foot">
       <div class="u">
-        <div class="av">{{ request.user.seller_profile.business_name|default:request.user.username|first|upper }}</div>
-        <div><b>{{ request.user.seller_profile.business_name|default:request.user.username|truncatechars:20 }}</b>
-          {% if request.user.seller_profile %}NTN {{ request.user.seller_profile.ntn_cnic }}{% else %}Profile pending{% endif %}</div>
+        <div class="av">{{ request.user.username|first|upper }}</div>
+        <div><b>{{ request.user.username|truncatechars:20 }}</b>
+          {% with n=request.user.seller_profiles.count %}{% if n %}{{ n }} business{{ n|pluralize:"es" }}{% else %}Business pending{% endif %}{% endwith %}</div>
       </div>
       <form method="post" action="{% url 'digital_invoicing:logout' %}" style="margin:8px 0 0">
         {% csrf_token %}
@@ -78,8 +78,8 @@ THIS template and fill:
         {% block di_actions %}{% endblock %}
         <div class="mode"><span class="dot"></span>MOCK MODE</div>
         <div class="uchip" title="{{ request.user.username }}">
-          <span class="uav">{{ request.user.seller_profile.business_name|default:request.user.username|first|upper }}</span>
-          <span class="unm">{{ request.user.seller_profile.business_name|default:request.user.username|truncatechars:18 }}</span>
+          <span class="uav">{{ request.user.username|first|upper }}</span>
+          <span class="unm">{{ request.user.username|truncatechars:18 }}</span>
         </div>
       </div>
     </div>

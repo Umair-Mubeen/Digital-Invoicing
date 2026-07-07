@@ -1,13 +1,12 @@
 {% extends "digital_invoicing/base_di.html" %}
 {% block na_profile %}on{% endblock %}
-{% block di_title_text %}Business Profile{% endblock %}
-{% block di_title %}Business Profile{% endblock %}
-{% block di_subtitle %}Ye details har invoice pe seller ke tor pe use hongi{% endblock %}
+{% block di_title_text %}Businesses{% endblock %}
+{% block di_title %}Businesses{% endblock %}
+{% block di_subtitle %}Aapke suppliers/businesses — invoice inhi ke naam se banti hai{% endblock %}
 
 {% block di_head %}
 <style>
-  .pf-card{max-width:560px}
-  .pf-card .body{padding:22px}
+  .biz-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start}
   .field{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
   .field label{font-size:11.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
   .field input,.field select{padding:10px 12px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13.5px;background:#fcfdfe}
@@ -15,42 +14,64 @@
   .savedmsg{background:var(--soft);color:var(--green-d);border:1px solid #bfe8d4;border-radius:8px;
     padding:11px 14px;font-weight:600;font-size:13px;margin-bottom:14px}
   .hint{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5}
+  .body{padding:22px}
+  @media(max-width:900px){.biz-grid{grid-template-columns:1fr}}
 </style>
 {% endblock %}
 
 {% block di_content %}
-<div class="di-card pf-card">
-  <h3>Seller Details</h3>
-  <div class="body">
-    {% if saved %}<div class="savedmsg">✓ Profile saved — ab invoices is se auto-fill hongi</div>{% endif %}
-    <form method="post">
-      {% csrf_token %}
-      <div class="field">
-        <label>NTN / CNIC *</label>
-        <input name="ntn_cnic" required maxlength="15" placeholder="7-digit NTN ya 13-digit CNIC"
-               value="{{ profile.ntn_cnic|default:'' }}">
-      </div>
-      <div class="field">
-        <label>Business Name *</label>
-        <input name="business_name" required maxlength="255" placeholder="e.g. Umair Traders"
-               value="{{ profile.business_name|default:'' }}">
-      </div>
-      <div class="field">
-        <label>Province *</label>
-        <select name="province">
-          {% for p in provinces %}
-            <option {% if profile.province == p %}selected{% endif %}>{{ p }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="field">
-        <label>Address *</label>
-        <input name="address" required maxlength="500" placeholder="Business address"
-               value="{{ profile.address|default:'' }}">
-      </div>
-      <button type="submit" class="btn-g" style="width:100%;padding:11px;font-size:14px;font-weight:700">Save Profile</button>
-    </form>
-    <div class="hint">💡 NTN/CNIC wahi do jo sales tax registration pe hai — yehi FBR ko invoice ke saath jata hai.</div>
+{% if saved %}<div class="savedmsg">✓ Business saved</div>{% endif %}
+<div class="biz-grid">
+
+  <div class="di-card">
+    <h3>Aapke businesses ({{ businesses|length }})</h3>
+    {% if businesses %}
+    <table class="list">
+      <thead><tr><th>Business</th><th>NTN / CNIC</th><th>Province</th><th></th></tr></thead>
+      <tbody>
+      {% for b in businesses %}
+        <tr>
+          <td style="font-weight:600">{{ b.business_name }}</td>
+          <td><span class="fbrno">{{ b.ntn_cnic }}</span></td>
+          <td style="color:var(--muted)">{{ b.province }}</td>
+          <td><a href="?edit={{ b.pk }}" style="color:var(--green-d);font-weight:600;text-decoration:none">✎ Edit</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <div class="empty">Abhi koi business nahi — pehla add karo (right side form).</div>
+    {% endif %}
   </div>
+
+  <div class="di-card">
+    <h3>{% if editing %}✎ Edit: {{ editing.business_name }}{% else %}+ Naya business{% endif %}</h3>
+    <div class="body">
+      <form method="post">
+        {% csrf_token %}
+        {% if editing %}<input type="hidden" name="edit_id" value="{{ editing.pk }}">{% endif %}
+        <div class="field"><label>NTN / CNIC *</label>
+          <input name="ntn_cnic" required maxlength="15" placeholder="7-digit NTN ya 13-digit CNIC"
+                 value="{{ editing.ntn_cnic|default:'' }}"></div>
+        <div class="field"><label>Business Name *</label>
+          <input name="business_name" required maxlength="255" placeholder="e.g. Umair Traders"
+                 value="{{ editing.business_name|default:'' }}"></div>
+        <div class="field"><label>Province *</label>
+          <select name="province">
+            {% for p in provinces %}
+              <option {% if editing.province == p %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+          </select></div>
+        <div class="field"><label>Address *</label>
+          <input name="address" required maxlength="500" placeholder="Business address"
+                 value="{{ editing.address|default:'' }}"></div>
+        <button type="submit" class="btn-g" style="width:100%;padding:11px;font-size:14px;font-weight:700">
+          {% if editing %}Update Business{% else %}Add Business{% endif %}</button>
+        {% if editing %}<a href="{% url 'digital_invoicing:profile' %}" style="display:block;text-align:center;margin-top:10px;color:var(--muted);font-size:12.5px">Cancel edit</a>{% endif %}
+      </form>
+      <div class="hint">💡 Jitne suppliers/clients ke liye invoicing karni hai, sab yahan add karo — invoice banate waqt dropdown se select hoga.</div>
+    </div>
+  </div>
+
 </div>
 {% endblock %}

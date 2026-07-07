@@ -34,9 +34,17 @@
     <input name="q" value="{{ q }}" placeholder="FBR number, buyer name ya NTN se dhundo…">
     <button type="submit">Search</button>
   </div>
-  <a class="fpill {% if not status %}on{% endif %}" href="?q={{ q|urlencode }}">All</a>
-  <a class="fpill {% if status == 'valid' %}on{% endif %}" href="?q={{ q|urlencode }}&status=valid">✓ Valid</a>
-  <a class="fpill {% if status == 'failed' %}on{% endif %}" href="?q={{ q|urlencode }}&status=failed">✗ Failed</a>
+  {% if businesses|length > 1 %}
+  <select name="biz" onchange="this.form.submit()" class="fpill" style="cursor:pointer">
+    <option value="">All businesses</option>
+    {% for b in businesses %}
+      <option value="{{ b.pk }}" {% if biz == b.pk|stringformat:"s" %}selected{% endif %}>{{ b.business_name }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  <a class="fpill {% if not status %}on{% endif %}" href="?q={{ q|urlencode }}&biz={{ biz }}">All</a>
+  <a class="fpill {% if status == 'valid' %}on{% endif %}" href="?q={{ q|urlencode }}&biz={{ biz }}&status=valid">✓ Valid</a>
+  <a class="fpill {% if status == 'failed' %}on{% endif %}" href="?q={{ q|urlencode }}&biz={{ biz }}&status=failed">✗ Failed</a>
 </form>
 
 <div class="di-card">
@@ -62,9 +70,9 @@
   </table>
   {% if page.paginator.num_pages > 1 %}
   <div class="pager">
-    {% if page.has_previous %}<a href="?q={{ q|urlencode }}&status={{ status }}&page={{ page.previous_page_number }}">← Prev</a>{% endif %}
+    {% if page.has_previous %}<a href="?q={{ q|urlencode }}&biz={{ biz }}&status={{ status }}&page={{ page.previous_page_number }}">← Prev</a>{% endif %}
     <span>Page {{ page.number }} / {{ page.paginator.num_pages }}</span>
-    {% if page.has_next %}<a href="?q={{ q|urlencode }}&status={{ status }}&page={{ page.next_page_number }}">Next →</a>{% endif %}
+    {% if page.has_next %}<a href="?q={{ q|urlencode }}&biz={{ biz }}&status={{ status }}&page={{ page.next_page_number }}">Next →</a>{% endif %}
   </div>
   {% endif %}
   {% else %}

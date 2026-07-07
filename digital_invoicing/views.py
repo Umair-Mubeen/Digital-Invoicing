@@ -53,15 +53,43 @@ def submit_invoice(request):
     if not raw_items:
         return JsonResponse({"ok": False, "error": "Add at least one item"}, status=400)
 
-    # Seller details come from the user's saved profile (server-side truth),
-    # never from the browser payload.
+    # --- Invoice date: pehle hi parse karo (galat format pe crash nahi, 0113) ---
+    from datetime import datetime as _dt
+    try:
+        _dt.strptime(p.get("invoiceDate", ""), "%Y-%m-%d")
+    except (ValueError, TypeError):
+        log_event(request, "invoice_failed", errors=["0113"],
+                  invoice_type=p.get("invoiceType", ""))
+        return JsonResponse({
+            "ok": False, "invoiceId": None, "invoiceNumber": "", "dated": "",
+            "validationResponse": {
+                "statusCode": "01", "status": "Invalid",
+                "error": "Invoice date is not in proper format (YYYY-MM-DD)",
+                "invoiceStatuses": [{"itemSNo": "1", "statusCode": "01",
+                    "status": "Invalid", "invoiceNo": "", "errorCode": "0113",
+                    "error": "Invoice date is not in proper format (YYYY-MM-DD)"}],
+            },
+            "totals": {"value": 0, "salesTax": 0, "furtherTax": 0, "total": 0},
+        })
+
+    # --- Sale Invoice: stale debit-note fields saaf karo (UI toggle bug guard) ---
+    if p.get("invoiceType") != "Debit Note":
+        p["invoiceRefNo"] = ""
+        p["reason"] = ""
+        p["reasonRemarks"] = ""
+
+    # Seller = SELECTED business — sirf apna (owner check). Browser ke seller
+    # fields ignore hote hain, profile hi server-side truth hai.
     from .models import SellerProfile
-    profile = SellerProfile.objects.filter(user=request.user).first()
-    if profile:
-        p["sellerNTNCNIC"] = profile.ntn_cnic
-        p["sellerBusinessName"] = profile.business_name
-        p["sellerProvince"] = profile.province
-        p["sellerAddress"] = profile.address
+    profile = SellerProfile.objects.filter(
+        user=request.user, pk=p.get("sellerProfileId")).first() \
+        or SellerProfile.objects.filter(user=request.user).first()
+    if not profile:
+        return JsonResponse({"ok": False, "error": "Pehle Business add karein"}, status=400)
+    p["sellerNTNCNIC"] = profile.ntn_cnic
+    p["sellerBusinessName"] = profile.business_name
+    p["sellerProvince"] = profile.province
+    p["sellerAddress"] = profile.address
 
     # ---- Debit Note: validate against the referenced invoice in DB ----
     # (mirrors FBR server-side checks: 0057, 0029/0035, 0034, 0067, 0027, 0028)
@@ -70,6 +98,8 @@ def submit_invoice(request):
         from datetime import datetime, timedelta
 
         def _fbr_error(code, msg):
+            log_event(request, "invoice_failed", errors=[code],
+                      invoice_type="Debit Note")
             return JsonResponse({
                 "ok": False, "invoiceId": None, "invoiceNumber": "", "dated": "",
                 "validationResponse": {
@@ -165,6 +195,7 @@ def submit_invoice(request):
     # ---- Persist (audit trail: payload + response) ----
     inv = Invoice.objects.create(
         owner=request.user,
+        seller_profile=profile,
         invoice_type=payload.get("invoiceType", "Sale Invoice"),
         invoice_date=payload.get("invoiceDate"),
         scenario_id=payload.get("scenarioId", ""),
@@ -247,12 +278,17 @@ def invoice_list(request):
                        Q(buyer_ntn_cnic__icontains=q))
     if status in ("valid", "failed"):
         qs = qs.filter(status=status)
+    biz = request.GET.get("biz", "").strip()
+    if biz.isdigit():
+        qs = qs.filter(seller_profile_id=biz)
 
     paginator = Paginator(qs, 20)
     page = paginator.get_page(request.GET.get("page"))
+    from .models import SellerProfile
     return render(request, "digital_invoicing/list.html", {
-        "page": page, "q": q, "status": status,
+        "page": page, "q": q, "status": status, "biz": biz,
         "total": paginator.count,
+        "businesses": SellerProfile.objects.filter(user=request.user).order_by("business_name"),
     })
 
 
@@ -276,14 +312,17 @@ def dashboard(request):
 @login_required
 def create_invoice(request):
     from .models import SellerProfile
-    profile = SellerProfile.objects.filter(user=request.user).first()
-    if not profile:
+    businesses = SellerProfile.objects.filter(user=request.user).order_by("business_name")
+    if not businesses.exists():
         from django.shortcuts import redirect
         return redirect("digital_invoicing:profile")
     recent_valid = Invoice.objects.filter(owner=request.user, status="valid")\
         .values_list("fbr_invoice_number", flat=True)[:50]
+    biz_json = [{"id": b.pk, "name": b.business_name, "ntn": b.ntn_cnic,
+                 "province": b.province, "address": b.address} for b in businesses]
     return render(request, "digital_invoicing/invoicing.html",
-                  {"profile": profile, "recent_valid": recent_valid})
+                  {"businesses": businesses, "biz_json": biz_json,
+                   "recent_valid": recent_valid})
 
 
 # ---------------------------------------------------------------------------
@@ -365,9 +404,11 @@ def invoice_print(request, pk):
 
 @login_required
 def seller_profile(request):
-    """Create/edit the user's business profile (seller details)."""
+    """Businesses manager — list + add + edit. Ek user ke multiple businesses."""
     from .models import SellerProfile
-    profile = SellerProfile.objects.filter(user=request.user).first()
+    businesses = SellerProfile.objects.filter(user=request.user).order_by("business_name")
+    edit_id = request.GET.get("edit") or request.POST.get("edit_id")
+    editing = businesses.filter(pk=edit_id).first() if edit_id else None
     saved = False
     if request.method == "POST":
         data = {
@@ -376,16 +417,18 @@ def seller_profile(request):
             "province": request.POST.get("province", "Sindh"),
             "address": request.POST.get("address", "").strip(),
         }
-        if profile:
+        if editing:
             for k, v in data.items():
-                setattr(profile, k, v)
-            profile.save()
+                setattr(editing, k, v)
+            editing.save()
         else:
-            profile = SellerProfile.objects.create(user=request.user, **data)
-        saved = True
+            SellerProfile.objects.create(user=request.user, **data)
         log_event(request, "profile_saved", business_name=data["business_name"])
+        saved = True
+        editing = None
+        businesses = SellerProfile.objects.filter(user=request.user).order_by("business_name")
     return render(request, "digital_invoicing/profile.html",
-                  {"profile": profile, "saved": saved,
+                  {"businesses": businesses, "editing": editing, "saved": saved,
                    "provinces": [p[0] for p in SellerProfile.PROVINCES]})
 
 

@@ -125,14 +125,20 @@
     <div class="card-body">
       <div class="grid g2">
         <div>
-          <div class="sub-h">Seller (aapka profile) <a href="{% url 'digital_invoicing:profile' %}" style="font-weight:600;color:var(--green-d);text-transform:none;font-size:11px">✎ edit</a></div>
+          <div class="sub-h">Seller / Business <a href="{% url 'digital_invoicing:profile' %}" style="font-weight:600;color:var(--green-d);text-transform:none;font-size:11px">+ manage</a></div>
           <div class="grid" style="gap:11px">
-            <div class="field"><label>NTN / CNIC</label><input id="sellerNTNCNIC" value="{{ profile.ntn_cnic }}" readonly style="background:#f2f6fa;color:var(--muted)"></div>
-            <div class="field"><label>Business Name</label><input id="sellerBusinessName" value="{{ profile.business_name }}" readonly style="background:#f2f6fa;color:var(--muted)"></div>
+            <div class="field"><label>Business select karo <span class="req">*</span></label>
+              <select id="sellerProfileId" onchange="fillSeller()">
+                {% for b in businesses %}
+                  <option value="{{ b.pk }}">{{ b.business_name }} — {{ b.ntn_cnic }}</option>
+                {% endfor %}
+              </select></div>
             <div class="grid g2" style="gap:11px">
-              <div class="field"><label>Province</label><input id="sellerProvince" value="{{ profile.province }}" readonly style="background:#f2f6fa;color:var(--muted)"></div>
-              <div class="field"><label>Address</label><input id="sellerAddress" value="{{ profile.address }}" readonly style="background:#f2f6fa;color:var(--muted)"></div>
+              <div class="field"><label>NTN / CNIC</label><input id="sellerNTNCNIC" readonly style="background:#f2f6fa;color:var(--muted)"></div>
+              <div class="field"><label>Province</label><input id="sellerProvince" readonly style="background:#f2f6fa;color:var(--muted)"></div>
             </div>
+            <div class="field"><label>Address</label><input id="sellerAddress" readonly style="background:#f2f6fa;color:var(--muted)"></div>
+            <input type="hidden" id="sellerBusinessName">
           </div>
         </div>
         <div>
@@ -198,7 +204,20 @@
 
 <div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
 
+{{ biz_json|json_script:"bizData" }}
 <script>
+/* ---- Businesses (seller dropdown) ---- */
+const BIZ = JSON.parse(document.getElementById('bizData').textContent);
+function fillSeller(){
+  const id = +document.getElementById('sellerProfileId').value;
+  const b = BIZ.find(x=>x.id===id) || BIZ[0];
+  if(!b) return;
+  document.getElementById('sellerNTNCNIC').value = b.ntn;
+  document.getElementById('sellerBusinessName').value = b.name;
+  document.getElementById('sellerProvince').value = b.province;
+  document.getElementById('sellerAddress').value = b.address;
+}
+
 /* ---- Backend wiring ---- */
 const BACKEND_SUBMIT_URL = "{% url 'digital_invoicing:submit' %}";
 const LIST_URL = "{% url 'digital_invoicing:list' %}";
@@ -379,8 +398,10 @@ function buildPayload(){
     buyerNTNCNIC: val('buyerNTNCNIC'), buyerBusinessName: val('buyerBusinessName'),
     buyerProvince: val('buyerProvince'), buyerAddress: val('buyerAddress'),
     buyerRegistrationType: val('buyerRegistrationType'),
-    invoiceRefNo: val('invoiceRefNo'), scenarioId: val('scenarioId'),
-    reason: val('dnReason'), reasonRemarks: val('dnRemarks'),
+    invoiceRefNo: val('invoiceType')==='Debit Note' ? val('invoiceRefNo') : '', scenarioId: val('scenarioId'),
+    sellerProfileId: +val('sellerProfileId'),
+    reason: val('invoiceType')==='Debit Note' ? val('dnReason') : '',
+    reasonRemarks: val('invoiceType')==='Debit Note' ? val('dnRemarks') : '',
     items: items.map(it=>{
       const c=calcItem(it);
       return { hsCode:it.hsCode, productDescription:it.desc, rate:c.rate+"%",
@@ -414,7 +435,8 @@ async function submitInvoice(btn){
   }
   btn.disabled=false;
   if(data.ok){ showSuccess(data); items=[]; addRow(); }
-  else showError(data.validationResponse.invoiceStatuses||[]);
+  else showError((data.validationResponse && data.validationResponse.invoiceStatuses) ||
+    [{errorCode:"", error: data.error || "Unknown error"}]);
 }
 
 function showSuccess(d){
@@ -456,7 +478,14 @@ function closeModal(){document.getElementById('overlay').classList.remove('show'
 document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();});
 
 document.getElementById('invoiceType').addEventListener('change',function(){
-  document.getElementById('dnWrap').hidden = this.value!=='Debit Note';
+  const isDN = this.value==='Debit Note';
+  document.getElementById('dnWrap').hidden = !isDN;
+  if(!isDN){
+    document.getElementById('invoiceRefNo').value='';
+    document.getElementById('dnReason').value='';
+    document.getElementById('dnRemarks').value='';
+    document.getElementById('dnRemarksWrap').hidden = true;
+  }
 });
 document.getElementById('dnReason').addEventListener('change',function(){
   document.getElementById('dnRemarksWrap').hidden = this.value!=='Others';
@@ -466,6 +495,7 @@ function val(id){return document.getElementById(id).value;}
 function fmt(n){return 'Rs '+Math.round(n).toLocaleString('en-PK');}
 
 document.getElementById('invoiceDate').value = new Date().toISOString().split('T')[0];
+fillSeller();
 addRow();
 </script>
 {% endblock %}

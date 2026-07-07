@@ -2,7 +2,7 @@
 {% block na_dash %}on{% endblock %}
 {% block di_title_text %}Dashboard{% endblock %}
 {% block di_title %}Dashboard{% endblock %}
-{% block di_subtitle %}Compliance snapshot — {{ request.user.seller_profile.business_name|default:request.user.username }}{% endblock %}
+{% block di_subtitle %}Compliance snapshot — {{ request.user.username }}{% endblock %}
 {% block di_actions %}<a class="btn-g" href="{% url 'digital_invoicing:create' %}">+ New Invoice</a>{% endblock %}
 
 {% block di_content %}
