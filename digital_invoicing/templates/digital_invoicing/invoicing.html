@@ -169,6 +169,7 @@
   <div class="di-card">
     <h3>3 — Items</h3>
     <div class="card-body">
+      <div id="taxHint" class="engine hide" style="margin:0 0 12px"></div>
       <div class="twrap">
         <table class="items">
           <thead><tr>
@@ -216,6 +217,18 @@ function fillSeller(){
   document.getElementById('sellerBusinessName').value = b.name;
   document.getElementById('sellerProvince').value = b.province;
   document.getElementById('sellerAddress').value = b.address;
+}
+
+function showTaxHint(rw){
+  const el=document.getElementById('taxHint');
+  if(!rw.schedule && !rw.note){ el.classList.add('hide'); return; }
+  const verify = (rw.note||'').toUpperCase().includes('VERIFY');
+  el.innerHTML = `<div><b>${rw.hS_CODE}</b> → ${rw.saleType||''}`
+    + (rw.schedule ? ` · <b>${rw.schedule}</b>` : '')
+    + (rw.note ? `<br><span style="color:var(--muted)">${rw.note}</span>` : '')
+    + (verify ? ` <span style="color:#b8860b;font-weight:700">⚠ practitioner verify</span>` : '')
+    + `</div>`;
+  el.classList.remove('hide');
 }
 
 /* ---- Backend wiring ---- */
@@ -349,15 +362,19 @@ function hsSuggest(input, itemId){
         input.value=rw.hS_CODE;
         upd(itemId,'hsCode',rw.hS_CODE);
         const it=items.find(x=>x.id===itemId);
-        if(it && !it.desc){ it.desc=rw.description;
-          const tr=document.querySelector(`tr[data-id="${itemId}"]`);
-          if(tr) tr.querySelectorAll('input')[1].value=rw.description; }
-        try{
+        if(it && !it.desc){ it.desc=rw.description; }
+        // UOM: DB row mein hai to wahi, warna reference API se
+        if(rw.uoms && rw.uoms.length && it){ it.uoM = rw.uoms[0]; }
+        else { try{
           const r=await fetch(REF_HS_UOM+"?hs_code="+encodeURIComponent(rw.hS_CODE),{credentials:"same-origin"});
           const uoms=(await r.json()).data||[];
           if(uoms.length && it) it.uoM=uoms[0].description;
-        }catch(e){}
+        }catch(e){} }
+        // TAX INTELLIGENCE: default sale type set + schedule hint
+        if(rw.saleType && it && SALE_TYPES[rw.saleType]){ it.saleType = rw.saleType; }
         closeAC();
+        render();
+        showTaxHint(rw);
       };
       acBox.appendChild(d);
     });

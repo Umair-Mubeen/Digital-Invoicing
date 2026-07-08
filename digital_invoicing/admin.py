@@ -1,6 +1,6 @@
 """admin.py — surface invoices in your existing Django admin panel."""
 from django.contrib import admin
-from .models import Invoice, InvoiceItem, Buyer, SellerProfile, AuditLog
+from .models import Invoice, InvoiceItem, Buyer, SellerProfile, AuditLog, HSCode
 
 
 class InvoiceItemInline(admin.TabularInline):
@@ -43,3 +43,11 @@ class AuditLogAdmin(admin.ModelAdmin):
     def has_add_permission(self, r):    return False
     def has_change_permission(self, r, obj=None): return False
     def has_delete_permission(self, r, obj=None): return False
+
+
+@admin.register(HSCode)
+class HSCodeAdmin(admin.ModelAdmin):
+    list_display = ("hs_code", "description", "default_sale_type", "schedule_hint", "is_active")
+    list_filter = ("default_sale_type", "is_active")
+    search_fields = ("hs_code", "description")
+    list_editable = ("default_sale_type", "schedule_hint", "is_active")

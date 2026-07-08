@@ -365,9 +365,25 @@ def ref_sro_schedules(request):
 
 @login_required
 def ref_hs_codes(request):
-    """Autocomplete: /reference/hscodes/?q=steel"""
-    c = get_reference_client()
-    return JsonResponse({"data": c.hs_codes(request.GET.get("q", ""))})
+    """Autocomplete: /reference/hscodes/?q=steel
+    DB-first (tax-intelligent HSCode directory — schedule/sale-type suggestions
+    ke saath); DB khali ho to mock/FBR reference client fallback."""
+    from .models import HSCode
+    from django.db.models import Q
+    q = request.GET.get("q", "").strip()
+    qs = HSCode.objects.filter(is_active=True)
+    if q:
+        qs = qs.filter(Q(hs_code__icontains=q) | Q(description__icontains=q))
+    rows = [{
+        "hS_CODE": h.hs_code, "description": h.description,
+        "uoms": h.uom_list(),
+        "saleType": h.default_sale_type,
+        "schedule": h.schedule_hint, "note": h.note,
+    } for h in qs[:25]]
+    if not rows and not HSCode.objects.exists():
+        c = get_reference_client()
+        rows = c.hs_codes(q)
+    return JsonResponse({"data": rows})
 
 
 @login_required

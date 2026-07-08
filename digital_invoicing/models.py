@@ -159,3 +159,39 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.username or 'anon'} · {self.action} · {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class HSCode(models.Model):
+    """Tax-intelligent HS directory — har code ke saath default schedule,
+    sale type aur practitioner note. Ye TaxBuddy ki curated tax knowledge hai
+    (admin se edit hoti hai). System SUGGEST karta hai; final classification
+    hamesha user/practitioner ki hai."""
+    SALE_TYPES = [
+        ("Goods at standard rate", "Goods at standard rate"),
+        ("Goods at reduced rate", "Goods at reduced rate"),
+        ("3rd Schedule Goods", "3rd Schedule Goods"),
+        ("Exempt Goods", "Exempt Goods"),
+        ("Zero-rated Goods", "Zero-rated Goods"),
+        ("Services", "Services"),
+    ]
+    hs_code = models.CharField(max_length=12, unique=True)   # XXXX.XXXX
+    description = models.CharField(max_length=255)
+    uoms = models.CharField(max_length=255, blank=True,
+                            help_text="Pipe-separated, pehla default (e.g. KG|Bag)")
+    default_sale_type = models.CharField(max_length=40, choices=SALE_TYPES,
+                                         default="Goods at standard rate")
+    schedule_hint = models.CharField(max_length=120, blank=True,
+                                     help_text="e.g. '3rd Schedule — retail price pe ST'")
+    note = models.CharField(max_length=255, blank=True,
+                            help_text="Practitioner note / VERIFY flag")
+    is_active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["hs_code"]
+
+    def __str__(self):
+        return f"{self.hs_code} — {self.description[:40]}"
+
+    def uom_list(self):
+        return [u for u in self.uoms.split("|") if u]

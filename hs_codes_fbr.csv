@@ -1,0 +1,120 @@
+hs_code,description,uoms,default_sale_type,schedule_hint,note
+1701.9910,White crystalline cane sugar,KG,3rd Schedule Goods,3rd Schedule,Sugar — retail price pe ST; current SRO position VERIFY
+1701.9920,White crystalline beet sugar,KG,3rd Schedule Goods,3rd Schedule,Sugar — retail price pe ST; VERIFY
+1703.1000,Cane molasses,KG,Goods at standard rate,Standard 18%,
+1006.3010,Rice - Basmati,KG,Exempt Goods,6th Sch,Rice — exempt (unbranded); branded retail pack VERIFY
+1006.3090,Rice - other,KG,Exempt Goods,6th Sch,Rice — exempt (unbranded); VERIFY
+1006.4000,Broken rice,KG,Exempt Goods,6th Sch,Broken rice — exempt; VERIFY
+1101.1000,Wheat flour,KG|40KG,Exempt Goods,6th Sch,Wheat flour — exempt
+1102.2000,Maize (corn) flour,KG,Exempt Goods,6th Sch,Maize flour — exempt; VERIFY
+1902.1920,Vermicelli,KG,Goods at standard rate,Standard 18%,
+1902.3000,Other pasta,KG,Goods at standard rate,Standard 18%,
+1905.3100,Sweet biscuits,"KG|Numbers, pieces, units",Goods at standard rate,Standard 18%,
+1905.3200,Waffles and wafers,KG,Goods at standard rate,Standard 18%,
+1905.9000,Bakery products - other,KG,Goods at standard rate,Standard 18%,
+1704.1000,Chewing gum,KG,Goods at standard rate,Standard 18%,
+1704.9090,Sugar confectionery - other,KG,Goods at standard rate,Standard 18%,
+1806.3100,Chocolate - filled,KG,Goods at standard rate,Standard 18%,
+1806.9000,Chocolate preparations - other,KG,Goods at standard rate,Standard 18%,
+2103.2000,Tomato ketchup and sauces,"KG|Numbers, pieces, units",Goods at standard rate,Standard 18%,
+2103.9000,Sauces and condiments - other,KG,Goods at standard rate,Standard 18%,
+2105.0000,Ice cream and edible ice,KG|Liter,3rd Schedule Goods,3rd Schedule,Ice cream — 3rd Sch listed
+2106.9020,Syrups and squashes,"Liter|Numbers, pieces, units",3rd Schedule Goods,3rd Schedule,Syrups/squashes — 3rd Sch listed
+2106.9090,Food preparations nes,KG,Goods at standard rate,Standard 18%,
+2201.1010,Mineral waters,"Liter|Numbers, pieces, units",Goods at standard rate,Standard 18%,
+2202.1010,Aerated waters / beverages,"Liter|Numbers, pieces, units",3rd Schedule Goods,3rd Schedule + FED,Aerated waters — 3rd Sch + FED; VERIFY FED rate
+2009.5000,Tomato juice,Liter,3rd Schedule Goods,3rd Schedule,Fruit juices — 3rd Sch listed; VERIFY
+2009.9000,Mixed fruit juices,Liter,3rd Schedule Goods,3rd Schedule,Fruit juices — 3rd Sch listed; VERIFY
+0902.3000,Black tea (retail packs upto 3kg),KG,3rd Schedule Goods,3rd Schedule,Tea retail packs — 3rd Sch listed item
+0902.4020,Black tea (bulk above 3kg),KG,Goods at standard rate,Standard 18%,Bulk tea — retail pack ho to 3rd Sch
+2101.1120,Instant coffee (retail packs),"KG|Numbers, pieces, units",Goods at standard rate,Standard 18%,
+0904.2010,Red chillies (whole),KG,Exempt Goods,6th Sch (unprocessed),Whole chillies unbranded = exempt; branded retail = 3rd Sch
+0904.2020,Red chillies (powder),KG,3rd Schedule Goods,3rd Sch (branded retail),Spices retail branded = 3rd Sch; unbranded loose = exempt 6th Sch
+0910.1000,Ginger,KG,Exempt Goods,6th Sch (fresh/unprocessed),Ginger — exempt agar unprocessed; VERIFY
+0910.3000,Turmeric (curcuma),KG,3rd Schedule Goods,3rd Sch (branded retail),Spices retail branded = 3rd Sch; unbranded = exempt
+0909.3000,Cumin seeds (zeera),KG,Exempt Goods,6th Sch (unprocessed),Whole spices unbranded = exempt; branded = 3rd Sch
+0813.4070,Raisins (kishmish),KG,Goods at standard rate,Standard 18%,Dry fruits — taxable; VERIFY current rate
+0813.4030,Pine nuts (chilgoza),KG,Goods at standard rate,Standard 18%,Dry fruits — taxable; VERIFY
+0810.9010,Pomegranates,KG,Exempt Goods,6th Sch (fresh fruit),Fresh fruit exempt (import pe alag ho sakta)
+1601.0000,Sausages / prepared meat,KG,Goods at standard rate,Standard 18%,
+1604.1400,Canned tuna,"KG|Numbers, pieces, units",Goods at standard rate,Standard 18%,
+2007.9900,Jams and fruit preserves,KG,Goods at standard rate,Standard 18%,
+2309.9020,Poultry/animal feed preparations,KG|40KG,Goods at standard rate,Standard 18%,
+1511.1000,Palm oil - crude,KG|MT,Goods at standard rate,Standard 18%,
+1511.9020,RBD palm oil,KG|MT,Goods at standard rate,Standard 18%,
+1511.9030,Palm olein (cooking oil),KG|Liter,Goods at standard rate,Standard 18%,
+1512.1900,Sunflower oil - refined,Liter|KG,Goods at standard rate,Standard 18%,
+1509.1000,Olive oil - virgin,Liter,Goods at standard rate,Standard 18%,
+1517.1000,Margarine,KG,Goods at standard rate,Standard 18%,
+3004.9092,Paracetamol (medicaments),"Numbers, pieces, units|KG",Goods at reduced rate,8th Sch (pharma 1%),Drugs 1% regime — serial/conditions VERIFY
+3004.9099,Medicaments - other,"Numbers, pieces, units|KG",Goods at reduced rate,8th Sch (pharma 1%),Drugs 1% regime — VERIFY
+3004.2000,Medicaments - antibiotics,"Numbers, pieces, units",Goods at reduced rate,8th Sch (pharma 1%),Antibiotics — 1% regime; VERIFY
+3004.9050,Eye drops,"Numbers, pieces, units",Goods at reduced rate,8th Sch (pharma 1%),VERIFY
+3004.9060,Medicinal ointments,"Numbers, pieces, units",Goods at reduced rate,8th Sch (pharma 1%),VERIFY
+3002.2020,Hepatitis-B vaccines,"Numbers, pieces, units",Exempt Goods,6th Sch,Vaccines — exempt; VERIFY
+3005.1090,Surgical tapes / dressings,"Numbers, pieces, units",Goods at standard rate,Standard 18%,
+3006.5000,First-aid boxes and kits,"Numbers, pieces, units",Goods at standard rate,Standard 18%,
+3822.0000,Diagnostic / lab reagents,"Numbers, pieces, units",Goods at standard rate,Standard 18%,
+3401.1100,Toilet soap,"Numbers, pieces, units|KG",3rd Schedule Goods,3rd Schedule,Toilet soap — 3rd Sch listed
+3401.2000,Soap - other forms,KG,Goods at standard rate,Standard 18%,
+3402.2000,Detergents (retail packs),"KG|Numbers, pieces, units",3rd Schedule Goods,3rd Schedule,Detergents — 3rd Sch listed
+3305.1000,Shampoos,"Numbers, pieces, units|Liter",3rd Schedule Goods,3rd Schedule,Shampoo — 3rd Sch listed
+3305.9020,Hair dyes,"Numbers, pieces, units",3rd Schedule Goods,3rd Schedule,Hair dyes (cosmetics) — 3rd Sch; VERIFY
+3306.1010,Toothpaste,"Numbers, pieces, units",3rd Schedule Goods,3rd Schedule,Toothpaste — 3rd Sch listed
+3303.2000,Perfumes,"Numbers, pieces, units",3rd Schedule Goods,3rd Schedule,Perfumery/cosmetics — 3rd Sch listed
+3304.3010,Nail polish,"Numbers, pieces, units",3rd Schedule Goods,3rd Schedule,Cosmetics — 3rd Sch listed
+3304.9910,Face and skin creams / lotions,"Numbers, pieces, units",3rd Schedule Goods,3rd Schedule,Creams/lotions (cosmetics) — 3rd Sch
+3307.4100,Agarbatti / incense,"Numbers, pieces, units|KG",Goods at standard rate,Standard 18%,
+3808.9110,Mosquito coils and mats,"Numbers, pieces, units",Goods at standard rate,Standard 18%,
+3808.9400,Disinfectants,"Liter|Numbers, pieces, units",Goods at standard rate,Standard 18%,
+3406.0000,Candles,"KG|Numbers, pieces, units",Goods at standard rate,Standard 18%,
+3605.0000,Matches,"Numbers, pieces, units|Packs",3rd Schedule Goods,3rd Schedule,Matches — 3rd Sch listed; VERIFY
+3102.1000,Urea fertilizer,KG|40KG|Bag,Goods at reduced rate,8th Sch (fertilizer),Urea reduced rate — current rate/serial VERIFY
+3103.1000,Superphosphate fertilizer,KG|Bag,Goods at reduced rate,8th Sch (fertilizer),VERIFY
+3105.3000,DAP fertilizer,KG|Bag,Goods at reduced rate,8th Sch (fertilizer),DAP — VERIFY current
+3808.9170,Registered agricultural pesticides,Liter|KG,Exempt Goods,6th Sch,Registered pesticides — exempt; VERIFY current
+3208.1010,Varnishes,Liter|Gallon,Goods at standard rate,Standard 18%,
+3209.1090,Paints (water based),Liter|Gallon,Goods at standard rate,Standard 18%,
+3215.1190,Printing ink,KG|Liter,Goods at standard rate,Standard 18%,
+3204.1600,Reactive dyes (textile),KG,Goods at standard rate,Standard 18%,
+3506.1000,Glues / adhesives (retail),"KG|Numbers, pieces, units",Goods at standard rate,Standard 18%,
+3814.0000,Thinners and solvents,Liter,Goods at standard rate,Standard 18%,
+3901.1000,Polyethylene (PE) resin,KG|MT,Goods at standard rate,Standard 18%,
+3902.1000,Polypropylene (PP) resin,KG|MT,Goods at standard rate,Standard 18%,
+3907.6020,PET resin (bottle grade),KG|MT,Goods at standard rate,Standard 18%,
+3917.2100,Pipes and tubes of polyethylene,KG|Meter,Goods at standard rate,Standard 18%,
+3918.1000,PVC floor coverings,Square Metre|KG,Goods at standard rate,Standard 18%,
+3920.2010,BOPP film - plain,KG,Goods at standard rate,Standard 18%,
+3923.2100,Plastic bags (polyethylene),KG,Goods at standard rate,Standard 18%,
+3923.3010,Plastic bottles,"Numbers, pieces, units|KG",Goods at standard rate,Standard 18%,
+3923.5000,"Caps, lids and closures","KG|Numbers, pieces, units",Goods at standard rate,Standard 18%,
+3924.1000,Plastic tableware / kitchenware,"KG|Numbers, pieces, units",Goods at standard rate,Standard 18%,
+3925.2000,Plastic doors and windows,"Numbers, pieces, units|KG",Goods at standard rate,Standard 18%,
+3926.9099,Plastic articles - other,"KG|Numbers, pieces, units",Goods at standard rate,Standard 18%,
+4011.1000,Tyres - motor cars,"Numbers, pieces, units",Goods at standard rate,Standard 18%,
+4011.2010,Tyres - light trucks,"Numbers, pieces, units",Goods at standard rate,Standard 18%,
+4011.4000,Tyres - motorcycles,"Numbers, pieces, units",Goods at standard rate,Standard 18%,
+4011.5000,Tyres - bicycles,"Numbers, pieces, units",Goods at standard rate,Standard 18%,
+4013.9020,Inner tubes - motorcycles,"Numbers, pieces, units",Goods at standard rate,Standard 18%,
+4016.9310,Rubber gaskets,"Numbers, pieces, units|KG",Goods at standard rate,Standard 18%,
+4107.1100,Finished leather - full grain,Square Foot|KG,Goods at standard rate,Standard 18%,
+4203.1010,Leather jackets,"Numbers, pieces, units",Goods at standard rate,Standard 18%,
+4203.2920,Leather gloves - industrial,Pair|Dozen,Goods at standard rate,Standard 18%,
+4202.2100,Handbags - leather,"Numbers, pieces, units",Goods at standard rate,Standard 18%,
+5205.1100,"Cotton yarn (single, uncombed)",KG,Goods at standard rate,Standard 18%,
+4407.1000,Sawn wood - coniferous,Cubic Metre|Timber Logs,Goods at standard rate,Standard 18%,
+4410.1100,Particle board,"Square Metre|Numbers, pieces, units",Goods at standard rate,Standard 18%,
+4418.2000,Wooden doors and frames,"Numbers, pieces, units",Goods at standard rate,Standard 18%,
+4419.0000,Wooden tableware / kitchenware,"Numbers, pieces, units",Goods at standard rate,Standard 18%,
+2501.1000,Table salt,KG|40KG,Exempt Goods,6th Sch,Table salt (incl. iodized) — exempt; VERIFY branded
+2501.2000,Rock salt,KG|MT,Goods at standard rate,Standard 18%,
+2523.1000,Cement clinker,MT,Goods at standard rate,Standard 18%,Clinker
+2523.2100,White cement,KG|Bag|MT,Goods at standard rate,Standard 18% + FED,White cement — FED VERIFY
+2523.2900,Portland cement (grey),Bag|MT|KG,Goods at standard rate,Standard 18% + FED,Cement — FED per kg bhi lagti hai; VERIFY FED
+2520.1010,Gypsum,MT|KG,Goods at standard rate,Standard 18%,
+2701.1200,Bituminous coal,MT,Goods at standard rate,Standard 18%,
+2515.1200,Marble blocks / slabs,MT|Square Foot,Goods at standard rate,Standard 18%,
+7214.9990,Steel bars (re-rolled),MT|KG,Goods at standard rate,Standard 18%,
+8523.4990,Software / recorded media,"Numbers, pieces, units",Goods at standard rate,Standard 18%,Software media — services classification bhi possible; VERIFY
+8471.3010,Laptops / notebooks,"Numbers, pieces, units",Goods at standard rate,Standard 18%,Laptops — import concessions VERIFY
+9983.0000,Telecom / IT services,"Numbers, pieces, units|SqY",Services,Provincial ST (services),Services — SRB/PRA/KPRA (province); FBR ST sirf ICT
