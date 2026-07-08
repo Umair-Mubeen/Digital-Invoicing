@@ -294,17 +294,24 @@ def invoice_list(request):
 
 @login_required
 def dashboard(request):
-    """Server-rendered dashboard (Django template)."""
+    """Server-rendered dashboard — lifetime + is-mahine ke totals."""
+    from datetime import date
     qs = Invoice.objects.filter(owner=request.user, status="valid")
     agg = qs.aggregate(
         count=Count("id"), value=Sum("total_value"),
         st=Sum("total_sales_tax"), ft=Sum("total_further_tax"),
     )
+    today = date.today()
+    m = qs.filter(invoice_date__year=today.year, invoice_date__month=today.month)\
+          .aggregate(count=Count("id"), st=Sum("total_sales_tax"))
     return render(request, "digital_invoicing/dashboard.html", {
         "count": agg["count"] or 0,
         "value": agg["value"] or 0,
         "sales_tax": agg["st"] or 0,
         "further_tax": agg["ft"] or 0,
+        "m_count": m["count"] or 0,
+        "m_st": m["st"] or 0,
+        "month_name": today.strftime("%B %Y"),
         "recent": qs[:8],
     })
 

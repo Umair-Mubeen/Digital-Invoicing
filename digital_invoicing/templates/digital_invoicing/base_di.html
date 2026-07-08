@@ -22,7 +22,7 @@ THIS template and fill:
   <!-- ============ Sidebar ============ -->
   <aside class="sb" id="sb">
     <div class="brand">
-      <div class="mark">TB</div>
+      <div class="mark" aria-hidden="true"></div>
       <div><b>TaxBuddy</b><span>Digital Invoicing</span></div>
     </div>
     <nav>
@@ -61,6 +61,7 @@ THIS template and fill:
       </form>
     </div>
   </aside>
+  <div class="sb-backdrop" onclick="document.getElementById('sb').classList.remove('open')"></div>
 
   <!-- ============ Main ============ -->
   <div class="mainc">
