@@ -146,7 +146,8 @@ def submit_invoice(request):
         value = it.get("valueSalesExcludingST", 0) or 0
         try:
             calc = compute_item(sale_type, value, buyer_unregistered=unreg,
-                                hs_code=it.get("hsCode", ""))
+                                hs_code=it.get("hsCode", ""),
+                                retail_price=it.get("fixedNotifiedValueOrRetailPrice", 0))
         except ValueError as e:
             return JsonResponse({"ok": False, "error": str(e)}, status=400)
 
@@ -155,8 +156,9 @@ def submit_invoice(request):
         it["salesTaxApplicable"] = float(calc["sales_tax"])
         it["furtherTax"] = float(calc["further_tax"])
         it["sroScheduleNo"] = calc["sro_schedule"]
+        _mrp = it.get("fixedNotifiedValueOrRetailPrice", 0) or 0
         it["fixedNotifiedValueOrRetailPrice"] = (
-            float(value) if calc["retail_price_based"] else 0
+            float(_mrp if _mrp else value) if calc["retail_price_based"] else 0
         )
         clean_items.append(it)
 

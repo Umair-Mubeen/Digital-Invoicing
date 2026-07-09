@@ -8,7 +8,7 @@ know the rules. Every rule here is traceable to the Sales Tax Act 1990.
 Rules encoded (verify current rates against the Act/SRO before production):
   - Standard rate ...... 18%            (Section 3)
   - Reduced rate ....... 5% (example)   (Section 3(2)(aa) + Eighth Schedule)
-  - Third Schedule ..... 18% on retail  (Section 3(2)(a)) — NO further tax
+  - Third Schedule ..... 18% on RETAIL PRICE/MRP (Sec 3(2)(a)) — NO further tax, NO value-addition tax
   - Exempt ............. no tax         (Section 13 + Sixth Schedule)
   - Zero-rated ......... 0%             (Section 4 + Fifth Schedule)
   - Services ........... 15% (example)  (provincial — varies)
@@ -94,7 +94,7 @@ def _money(x):
     return Decimal(x).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def compute_item(sale_type, value_excl_st, buyer_unregistered=False, hs_code=""):
+def compute_item(sale_type, value_excl_st, buyer_unregistered=False, hs_code="", retail_price=0):
     """
     Return a dict of computed tax fields for a single line item.
     `value_excl_st` is the taxable value before sales tax.
@@ -104,7 +104,14 @@ def compute_item(sale_type, value_excl_st, buyer_unregistered=False, hs_code="")
         raise ValueError(f"Unknown sale type: {sale_type!r}")
 
     value = Decimal(str(value_excl_st or 0))
-    sales_tax = _money(value * cfg["rate"] / 100) if cfg["charges_st"] else _money(0)
+    # 3rd Schedule: sales tax RETAIL PRICE (MRP) pe lagta hai, sale value pe nahi
+    # (Sec 3(2)(a)). Baqi sab pe normal sale value.
+    retail = Decimal(str(retail_price or 0))
+    if cfg["retail_price_based"]:
+        st_base = retail if retail > 0 else value   # MRP na ho to fallback value
+    else:
+        st_base = value
+    sales_tax = _money(st_base * cfg["rate"] / 100) if cfg["charges_st"] else _money(0)
 
     further_tax = _money(0)
     if cfg["further"] and buyer_unregistered and not _further_tax_exempt_hs(hs_code):
@@ -120,6 +127,7 @@ def compute_item(sale_type, value_excl_st, buyer_unregistered=False, hs_code="")
         "sro_schedule": cfg["sro"],
         "retail_price_based": cfg["retail_price_based"],
         "further_tax_hs_exempt": _further_tax_exempt_hs(hs_code),
+        "st_base": st_base,
         "total": total,
     }
 

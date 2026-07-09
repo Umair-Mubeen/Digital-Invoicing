@@ -204,6 +204,7 @@
             <th style="min-width:150px">Sale Type</th>
             <th>Rate</th><th style="min-width:60px">Qty</th>
             <th style="min-width:105px">Value (excl. ST)</th>
+            <th style="min-width:110px">Retail Price / MRP</th>
             <th style="min-width:90px">Sales Tax</th>
             <th style="min-width:85px">Further Tax</th>
             <th style="min-width:95px">Total</th><th></th>
@@ -377,7 +378,7 @@ let items = [];
 
 function addRow(preset){
   items.push(Object.assign({id:Date.now()+Math.random(), hsCode:"", desc:"",
-    saleType:"Goods at standard rate", qty:1, value:0,
+    saleType:"Goods at standard rate", qty:1, value:0, mrp:0,
     uoM:"Numbers, pieces, units"}, preset||{}));
   render();
 }
@@ -385,7 +386,9 @@ function rm(id){items=items.filter(x=>x.id!==id); render();}
 
 function calcItem(it){
   const cfg=SALE_TYPES[it.saleType], value=(+it.value)||0;
-  const st=cfg.st?value*cfg.rate/100:0;
+  const mrp=(+it.mrp)||0;
+  const stBase = cfg.retail ? (mrp>0?mrp:value) : value;
+  const st=cfg.st?stBase*cfg.rate/100:0;
   const unreg=document.getElementById('buyerRegistrationType').value==='Unregistered';
   const ft=(cfg.further&&unreg&&!ftExemptHS(it.hsCode))?value*FURTHER_TAX_RATE/100:0;
   return {rate:cfg.rate, st, ft, sro:cfg.sro, total:value+st+ft};
@@ -394,7 +397,7 @@ function calcItem(it){
 /* Light update: typing par table re-render nahi hota — focus safe */
 function upd(id,k,v){
   const it=items.find(x=>x.id===id); if(!it)return;
-  it[k]=(k==='qty'||k==='value')?parseFloat(v)||0:v;
+  it[k]=(k==='qty'||k==='value'||k==='mrp')?parseFloat(v)||0:v;
   if(k==='saleType'){ render(); return; }
   updateCalcRow(it); recalcTotals();
 }
@@ -423,6 +426,9 @@ function render(){
       <td class="num c-rate">${SALE_TYPES[it.saleType].rate}%</td>
       <td><input class="num" type="number" min="0" value="${it.qty}" oninput="upd(${it.id},'qty',this.value)"></td>
       <td><input class="num" type="number" min="0" value="${it.value}" oninput="upd(${it.id},'value',this.value)"></td>
+      <td>${SALE_TYPES[it.saleType].retail
+          ? `<input class="num" type="number" min="0" placeholder="MRP" value="${it.mrp||''}" oninput="upd(${it.id},'mrp',this.value)" style="border-color:var(--green)">`
+          : `<span style="color:var(--faint);font-size:11px">—</span>`}</td>
       <td class="calc c-st">${fmt(c.st)}</td>
       <td class="calc c-ft">${fmt(c.ft)}</td>
       <td class="calc c-tot">${fmt(c.total)}</td>
@@ -539,7 +545,7 @@ function buildPayload(){
       return { hsCode:it.hsCode, productDescription:it.desc, rate:c.rate+"%",
         uoM:it.uoM, quantity:(+it.qty)||0, totalValues:0,
         valueSalesExcludingST:(+it.value)||0,
-        fixedNotifiedValueOrRetailPrice: SALE_TYPES[it.saleType].retail?((+it.value)||0):0,
+        fixedNotifiedValueOrRetailPrice: SALE_TYPES[it.saleType].retail?(((+it.mrp)||(+it.value))||0):0,
         salesTaxApplicable: Math.round(c.st*100)/100,
         salesTaxWithheldAtSource:0, extraTax:"",
         furtherTax: Math.round(c.ft*100)/100,
