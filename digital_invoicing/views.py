@@ -145,7 +145,8 @@ def submit_invoice(request):
         sale_type = it.get("saleType", "Goods at standard rate")
         value = it.get("valueSalesExcludingST", 0) or 0
         try:
-            calc = compute_item(sale_type, value, buyer_unregistered=unreg)
+            calc = compute_item(sale_type, value, buyer_unregistered=unreg,
+                                hs_code=it.get("hsCode", ""))
         except ValueError as e:
             return JsonResponse({"ok": False, "error": str(e)}, status=400)
 
@@ -238,6 +239,35 @@ def submit_invoice(request):
             sro_schedule=it.get("sroScheduleNo", ""),
         )
 
+    # Buyer Book + Saved Products — valid invoice se khud yaad rakho
+    if valid:
+        try:
+            from .models import Buyer, SavedItem
+            bkey = {"owner": request.user}
+            if payload.get("buyerNTNCNIC"):
+                bkey["ntn_cnic"] = payload["buyerNTNCNIC"]
+            else:
+                bkey["business_name"] = payload.get("buyerBusinessName", "")
+            b, _ = Buyer.objects.update_or_create(**bkey, defaults={
+                "business_name": payload.get("buyerBusinessName", ""),
+                "ntn_cnic": payload.get("buyerNTNCNIC", ""),
+                "registration_type": payload.get("buyerRegistrationType", "Unregistered"),
+                "province": payload.get("buyerProvince", "Sindh"),
+                "address": payload.get("buyerAddress", ""),
+            })
+            Buyer.objects.filter(pk=b.pk).update(
+                times_used=b.times_used + 1, last_used=timezone.now())
+            for it in clean_items:
+                si, _ = SavedItem.objects.update_or_create(
+                    owner=request.user, hs_code=it.get("hsCode", ""),
+                    description=it.get("productDescription", ""),
+                    defaults={"sale_type": it.get("saleType", ""),
+                              "uom": it.get("uoM", ""),
+                              "last_value": it.get("valueSalesExcludingST", 0)})
+                SavedItem.objects.filter(pk=si.pk).update(times_used=si.times_used + 1)
+        except Exception:
+            pass
+
     log_event(request,
               "invoice_valid" if valid else "invoice_failed",
               invoice_id=inv.pk,
@@ -327,8 +357,17 @@ def create_invoice(request):
         .values_list("fbr_invoice_number", flat=True)[:50]
     biz_json = [{"id": b.pk, "name": b.business_name, "ntn": b.ntn_cnic,
                  "province": b.province, "address": b.address} for b in businesses]
+    from .models import Buyer, SavedItem
+    buyers_json = [{"id": b.pk, "name": b.business_name, "ntn": b.ntn_cnic,
+                    "reg": b.registration_type, "province": b.province,
+                    "address": b.address}
+                   for b in Buyer.objects.filter(owner=request.user)[:200]]
+    items_json = [{"hs": i.hs_code, "desc": i.description, "st": i.sale_type,
+                   "uom": i.uom, "val": float(i.last_value)}
+                  for i in SavedItem.objects.filter(owner=request.user)[:12]]
     return render(request, "digital_invoicing/invoicing.html",
                   {"businesses": businesses, "biz_json": biz_json,
+                   "buyers_json": buyers_json, "items_json": items_json,
                    "recent_valid": recent_valid})
 
 

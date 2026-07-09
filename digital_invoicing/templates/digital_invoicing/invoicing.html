@@ -91,6 +91,9 @@
   .badge-ok{color:var(--green-d)}
   .badge-warn{color:var(--amber)}
   .badge-err{color:var(--danger)}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.4);
+    border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px;margin-right:4px}
+  @keyframes spin{to{transform:rotate(360deg)}}
   @media(max-width:820px){.g2,.g3{grid-template-columns:1fr}}
 </style>
 {% endblock %}
@@ -170,7 +173,9 @@
               <div class="field"><label>NTN / CNIC <span id="buyerBadge" style="text-transform:none;font-weight:700"></span></label>
                 <input id="buyerNTNCNIC" value="" placeholder="7-digit NTN / 13-digit CNIC" autocomplete="off"></div>
             </div>
-            <div class="field"><label>Business Name <span class="req">*</span></label><input id="buyerBusinessName" value=""></div>
+            <div class="field" style="position:relative"><label>Business Name <span class="req">*</span></label>
+              <input id="buyerBusinessName" value="" autocomplete="off"
+                     oninput="buyerSuggest(this)" onfocus="buyerSuggest(this)"></div>
             <div class="grid g2" style="gap:11px">
               <div class="field"><label>Province <span class="req">*</span></label>
                 <select id="buyerProvince"><option>Sindh</option><option>Punjab</option><option>KPK</option><option>Balochistan</option><option>Islamabad</option><option>AJK</option><option>Gilgit-Baltistan</option></select></div>
@@ -189,6 +194,7 @@
   <div class="di-card">
     <h3>3 — Items</h3>
     <div class="card-body">
+      <div id="savedItems" class="hide" style="margin:0 0 12px;display:flex;gap:7px;flex-wrap:wrap;align-items:center"></div>
       <div id="taxHint" class="engine hide" style="margin:0 0 12px"></div>
       <div class="twrap">
         <table class="items">
@@ -226,9 +232,88 @@
 <div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
 
 {{ biz_json|json_script:"bizData" }}
+{{ buyers_json|json_script:"buyerData" }}
+{{ items_json|json_script:"itemData" }}
 <script>
 /* ---- Businesses (seller dropdown) ---- */
 const BIZ = JSON.parse(document.getElementById('bizData').textContent);
+const BUYERS = JSON.parse(document.getElementById('buyerData').textContent);
+const SAVED = JSON.parse(document.getElementById('itemData').textContent);
+
+/* ---- Toasts (alert ki jagah) ---- */
+function toast(msg, kind){
+  let wrap = document.getElementById('toastWrap');
+  if(!wrap){ wrap=document.createElement('div'); wrap.id='toastWrap';
+    wrap.style.cssText='position:fixed;top:16px;right:16px;z-index:200;display:flex;flex-direction:column;gap:8px';
+    document.body.appendChild(wrap); }
+  const t=document.createElement('div');
+  const c = kind==='err' ? ['#FDECEA','#C0392B','#F2C7C2'] : kind==='warn' ? ['#FDF6E1','#B8860B','#EFDFAE'] : ['#E9F9F2','#0A7F5C','#BEE8D3'];
+  t.style.cssText=`background:${c[0]};color:${c[1]};border:1px solid ${c[2]};padding:11px 15px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 10px 30px -8px rgba(10,38,71,.25);max-width:320px;animation:slideIn .2s ease-out`;
+  t.textContent=msg;
+  wrap.appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(()=>t.remove(),300); }, 3200);
+}
+const _si=document.createElement('style');
+_si.textContent='@keyframes slideIn{from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1}}';
+document.head.appendChild(_si);
+
+/* ---- Buyer Book autocomplete ---- */
+let bBox=null;
+function closeBuyer(){ if(bBox){bBox.remove(); bBox=null;} }
+function buyerSuggest(input){
+  const q=input.value.trim().toLowerCase();
+  closeBuyer();
+  let rows = BUYERS;
+  if(q) rows = BUYERS.filter(b => b.name.toLowerCase().includes(q) || (b.ntn||'').includes(q));
+  if(!rows.length) return;
+  bBox=document.createElement('div'); bBox.className='ac-box';
+  const r=input.getBoundingClientRect();
+  bBox.style.left=(r.left+window.scrollX)+'px';
+  bBox.style.top=(r.bottom+window.scrollY+3)+'px';
+  bBox.style.minWidth=r.width+'px';
+  rows.slice(0,8).forEach(b=>{
+    const d=document.createElement('div'); d.className='ac-item';
+    d.innerHTML=`<b>${b.name}</b>${b.ntn?` <span>· ${b.ntn}</span>`:''}<br><span style="font-size:11px">${b.reg} · ${b.province}</span>`;
+    d.onmousedown=(e)=>{
+      e.preventDefault();
+      document.getElementById('buyerBusinessName').value=b.name;
+      document.getElementById('buyerNTNCNIC').value=b.ntn||'';
+      document.getElementById('buyerRegistrationType').value=b.reg;
+      document.getElementById('buyerProvince').value=b.province;
+      document.getElementById('buyerAddress').value=b.address||'';
+      recalc(); closeBuyer();
+      const badge=document.getElementById('buyerBadge');
+      if(badge){ badge.textContent='✓ saved buyer'; badge.className='badge-ok'; }
+    };
+    bBox.appendChild(d);
+  });
+  document.body.appendChild(bBox);
+}
+document.addEventListener('click',e=>{ if(bBox && !bBox.contains(e.target) && e.target.id!=='buyerBusinessName') closeBuyer(); });
+
+/* ---- Saved Products chips ---- */
+function renderSavedChips(){
+  const bar=document.getElementById('savedItems');
+  if(!SAVED.length){ bar.classList.add('hide'); return; }
+  bar.classList.remove('hide');
+  bar.innerHTML='<span style="font-size:11px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.06em">Quick add:</span>';
+  SAVED.forEach(it=>{
+    const chip=document.createElement('button');
+    chip.type='button';
+    chip.style.cssText='background:#F2F6FA;border:1px solid var(--line-2);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer;font-family:inherit;transition:background .12s';
+    chip.innerHTML=`+ ${it.desc.length>22?it.desc.slice(0,22)+'…':it.desc}`;
+    chip.onmouseover=()=>chip.style.background='#E4EDF6';
+    chip.onmouseout=()=>chip.style.background='#F2F6FA';
+    chip.onclick=()=>{
+      addRow({hsCode:it.hs, desc:it.desc, saleType:(SALE_TYPES[it.st]?it.st:'Goods at standard rate'),
+              uoM:it.uom, value:it.val||0});
+      toast(`Added: ${it.desc}`);
+    };
+    bar.appendChild(chip);
+  });
+}
+
+
 function fillSeller(){
   const id = +document.getElementById('sellerProfileId').value;
   const b = BIZ.find(x=>x.id===id) || BIZ[0];
@@ -278,6 +363,16 @@ const SALE_TYPES = {
   "Services":               {rate:15, further:false, sro:"",        st:true},
 };
 const FURTHER_TAX_RATE = 4;
+// SRO 648(I)/2013 — in HS prefixes pe further tax NAHI (server se match)
+const FT_EXEMPT_HS = [
+  // SRO 648(I)/2013
+  "3102","3103","3104","3105","2710","2711","8703","8704","8711","1001","1006","1101","0401","0402","3004",
+  // SRO 1223(I)/2021 — steel sector
+  "7207","7208","7209","7210","7211","7212","7213","7214","7215","7216","7217","7218","7219","7220","7221","7222","7223","7224","7225","7226","7227","7228","7229","7301","7302","7303","7304","7305","7306","7307","7308",
+  // SRO 1223(I)/2021 — edible oil sector
+  "1507","1508","1509","1510","1511","1512","1513","1514","1515","1516","1517","1518"
+];
+function ftExemptHS(hs){ const d=(hs||"").replace(/\./g,""); return FT_EXEMPT_HS.some(p=>d.startsWith(p)); }
 let items = [];
 
 function addRow(preset){
@@ -292,7 +387,7 @@ function calcItem(it){
   const cfg=SALE_TYPES[it.saleType], value=(+it.value)||0;
   const st=cfg.st?value*cfg.rate/100:0;
   const unreg=document.getElementById('buyerRegistrationType').value==='Unregistered';
-  const ft=(cfg.further&&unreg)?value*FURTHER_TAX_RATE/100:0;
+  const ft=(cfg.further&&unreg&&!ftExemptHS(it.hsCode))?value*FURTHER_TAX_RATE/100:0;
   return {rate:cfg.rate, st, ft, sro:cfg.sro, total:value+st+ft};
 }
 
@@ -455,9 +550,11 @@ function buildPayload(){
 }
 
 async function submitInvoice(btn){
-  if(!items.length){ alert("Add at least one item first."); return; }
+  if(!items.length){ toast("Pehle ek item add karein.","warn"); return; }
   const payload = buildPayload();
+  const label = btn.innerHTML;
   btn.disabled=true;
+  btn.innerHTML='<span class="spin"></span> FBR ko bhej rahe hain…';
   let data;
   try{
     const resp = await fetch(BACKEND_SUBMIT_URL,{
@@ -467,10 +564,10 @@ async function submitInvoice(btn){
     });
     data = await resp.json();
   }catch(e){
-    btn.disabled=false;
-    alert("Server se connect nahi ho paya: "+e.message); return;
+    btn.disabled=false; btn.innerHTML=label;
+    toast("Server se connect nahi ho paya: "+e.message,"err"); return;
   }
-  btn.disabled=false;
+  btn.disabled=false; btn.innerHTML=label;
   if(data.ok){ showSuccess(data); items=[]; addRow(); }
   else showError((data.validationResponse && data.validationResponse.invoiceStatuses) ||
     [{errorCode:"", error: data.error || "Unknown error"}]);
@@ -533,6 +630,7 @@ function fmt(n){return 'Rs '+Math.round(n).toLocaleString('en-PK');}
 
 document.getElementById('invoiceDate').value = new Date().toISOString().split('T')[0];
 fillSeller();
+renderSavedChips();
 addRow();
 </script>
 {% endblock %}

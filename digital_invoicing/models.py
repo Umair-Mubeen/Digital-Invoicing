@@ -17,13 +17,20 @@ class Buyer(models.Model):
                  ["Sindh", "Punjab", "KPK", "Balochistan",
                   "Islamabad", "AJK", "Gilgit-Baltistan"]]
 
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.CASCADE, related_name="buyers")
     business_name = models.CharField(max_length=255)
     ntn_cnic = models.CharField(max_length=15, blank=True)
     registration_type = models.CharField(max_length=20, choices=REG_CHOICES,
                                           default="Unregistered")
     province = models.CharField(max_length=30, choices=PROVINCES, default="Sindh")
     address = models.CharField(max_length=500, blank=True)
+    times_used = models.PositiveIntegerField(default=0)
+    last_used = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-last_used"]
 
     def __str__(self):
         return f"{self.business_name} ({self.registration_type})"
@@ -195,3 +202,25 @@ class HSCode(models.Model):
 
     def uom_list(self):
         return [u for u in self.uoms.split("|") if u]
+
+
+
+class SavedItem(models.Model):
+    """Frequent products — valid invoice se KHUD save hote hain.
+    Create page pe chips ban ke dikhte hain: ek click = poori row."""
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                              related_name="saved_items")
+    hs_code = models.CharField(max_length=12)
+    description = models.CharField(max_length=255)
+    sale_type = models.CharField(max_length=40, default="Goods at standard rate")
+    uom = models.CharField(max_length=50, default="Numbers, pieces, units")
+    last_value = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    times_used = models.PositiveIntegerField(default=0)
+    last_used = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-times_used", "-last_used"]
+        unique_together = [("owner", "hs_code", "description")]
+
+    def __str__(self):
+        return f"{self.description} ({self.hs_code})"
