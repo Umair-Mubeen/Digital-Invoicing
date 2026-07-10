@@ -21,6 +21,7 @@ class Buyer(models.Model):
                               on_delete=models.CASCADE, related_name="buyers")
     business_name = models.CharField(max_length=255)
     ntn_cnic = models.CharField(max_length=15, blank=True)
+    strn = models.CharField("Sales Tax Reg No (STRN)", max_length=20, blank=True)
     registration_type = models.CharField(max_length=20, choices=REG_CHOICES,
                                           default="Unregistered")
     province = models.CharField(max_length=30, choices=PROVINCES, default="Sindh")
@@ -136,6 +137,11 @@ class SellerProfile(models.Model):
     business_name = models.CharField(max_length=255)
     province = models.CharField(max_length=30, choices=PROVINCES, default="Sindh")
     address = models.CharField(max_length=500)
+    # Per-supplier FBR credentials (SaaS: har business apna token daalta hai)
+    fbr_token = models.CharField(max_length=255, blank=True,
+                                 help_text="PRAL se mila Bearer token (5-saal)")
+    use_sandbox = models.BooleanField(default=True,
+                                      help_text="ON = sandbox/testing; OFF = production")
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -224,3 +230,25 @@ class SavedItem(models.Model):
 
     def __str__(self):
         return f"{self.description} ({self.hs_code})"
+
+
+
+class ATLStatus(models.Model):
+    """FBR Sales Tax Active Taxpayer List — har buyer ka MAHINA-wise status.
+    Practitioner FBR ki ATL file (CSV) upload karta hai; system reg-no ke
+    against Active/Inactive save karta hai (period = YYYY-MM)."""
+    STATUS = [("Active", "Active"), ("Inactive", "Inactive")]
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                              related_name="atl_records")
+    reg_no = models.CharField(max_length=20, db_index=True)   # NTN/STRN/CNIC
+    period = models.CharField(max_length=7)                   # "2026-07"
+    status = models.CharField(max_length=10, choices=STATUS, default="Active")
+    uploaded_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-period"]
+        unique_together = [("owner", "reg_no", "period")]
+        indexes = [models.Index(fields=["owner", "reg_no", "period"])]
+
+    def __str__(self):
+        return f"{self.reg_no} · {self.period} · {self.status}"

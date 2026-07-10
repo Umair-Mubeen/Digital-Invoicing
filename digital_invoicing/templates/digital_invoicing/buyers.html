@@ -1,0 +1,90 @@
+{% extends "digital_invoicing/base_di.html" %}
+{% block na_buyers %}on{% endblock %}
+{% block di_title_text %}Buyers{% endblock %}
+{% block di_title %}Buyers{% endblock %}
+{% block di_subtitle %}Buyer directory + Sales Tax ATL status ({{ period }}){% endblock %}
+{% block di_actions %}<a class="btn-g" href="{% url 'digital_invoicing:atl_upload' %}">⬆ Upload ATL</a>{% endblock %}
+
+{% block di_head %}
+<style>
+  .bwrap{display:grid;grid-template-columns:1.5fr 1fr;gap:18px;align-items:start}
+  .field{display:flex;flex-direction:column;gap:5px;margin-bottom:13px}
+  .field label{font-size:11px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.05em}
+  .field input,.field select{padding:9.5px 12px;border:1px solid var(--line-2);border-radius:9px;font:inherit;font-size:13.5px;background:#FCFDFE}
+  .field input:focus,.field select:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(13,158,114,.12)}
+  .savedmsg{background:var(--green-soft);color:var(--green-d);border:1px solid #BEE8D3;border-radius:9px;padding:11px 14px;font-weight:600;font-size:13px;margin-bottom:14px}
+  .body{padding:20px}
+  .atl{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px}
+  .atl.a{background:var(--green-soft);color:var(--green-d)}
+  .atl.i{background:var(--danger-soft);color:var(--danger)}
+  .atl.n{background:#EEF2F7;color:var(--faint)}
+  @media(max-width:900px){.bwrap{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+
+{% block di_content %}
+{% if saved %}<div class="savedmsg">✓ Buyer saved</div>{% endif %}
+<div class="bwrap">
+
+  <div class="di-card">
+    <h3>Saved buyers ({{ buyer_list|length }})</h3>
+    {% if buyer_list %}
+    <table class="list">
+      <thead><tr><th>Buyer</th><th>NTN / STRN</th><th>Type</th><th>ATL ({{ period }})</th><th></th></tr></thead>
+      <tbody>
+      {% for x in buyer_list %}
+        <tr>
+          <td style="font-weight:600">{{ x.b.business_name }}<br><span style="color:var(--faint);font-size:11px;font-weight:400">{{ x.b.province }}</span></td>
+          <td><span class="fbrno">{{ x.b.ntn_cnic|default:"—" }}</span>{% if x.b.strn %}<br><span style="color:var(--faint);font-size:11px">STRN {{ x.b.strn }}</span>{% endif %}</td>
+          <td style="font-size:12px">{{ x.b.registration_type }}</td>
+          <td>
+            {% if x.atl == "Active" %}<span class="atl a">● Active</span>
+            {% elif x.atl == "Inactive" %}<span class="atl i">● Inactive</span>
+            {% else %}<span class="atl n">— no data</span>{% endif %}
+          </td>
+          <td style="white-space:nowrap">
+            <a href="?edit={{ x.b.pk }}" style="color:var(--green-d);font-weight:600;text-decoration:none">✎</a>
+            <form method="post" style="display:inline" onsubmit="return confirm('Buyer delete karein?')">
+              {% csrf_token %}<input type="hidden" name="delete_id" value="{{ x.b.pk }}">
+              <button type="submit" style="background:none;border:none;color:var(--danger);cursor:pointer;font:inherit;font-weight:600;margin-left:8px">🗑</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <div class="empty">Abhi koi buyer nahi. Invoice banane pe khud save hote hain, ya yahan add karo →</div>
+    {% endif %}
+  </div>
+
+  <div class="di-card">
+    <h3>{% if editing %}✎ Edit buyer{% else %}+ Naya buyer{% endif %}</h3>
+    <div class="body">
+      <form method="post">
+        {% csrf_token %}
+        {% if editing %}<input type="hidden" name="edit_id" value="{{ editing.pk }}">{% endif %}
+        <div class="field"><label>Business Name *</label>
+          <input name="business_name" required value="{{ editing.business_name|default:'' }}"></div>
+        <div class="field"><label>NTN / CNIC</label>
+          <input name="ntn_cnic" value="{{ editing.ntn_cnic|default:'' }}"></div>
+        <div class="field"><label>STRN (Sales Tax Reg No)</label>
+          <input name="strn" value="{{ editing.strn|default:'' }}"></div>
+        <div class="field"><label>Registration Type</label>
+          <select name="registration_type">
+            {% for t in reg_types %}<option {% if editing.registration_type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+          </select></div>
+        <div class="field"><label>Province</label>
+          <select name="province">
+            {% for p in provinces %}<option {% if editing.province == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+          </select></div>
+        <div class="field"><label>Address</label>
+          <input name="address" value="{{ editing.address|default:'' }}"></div>
+        <button type="submit" class="btn-g" style="width:100%;padding:11px;font-weight:700">{% if editing %}Update{% else %}Add buyer{% endif %}</button>
+        {% if editing %}<a href="{% url 'digital_invoicing:buyers' %}" style="display:block;text-align:center;margin-top:10px;color:var(--muted);font-size:12.5px">Cancel</a>{% endif %}
+      </form>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

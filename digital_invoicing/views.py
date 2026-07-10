@@ -138,6 +138,16 @@ def submit_invoice(request):
 
     unreg = p.get("buyerRegistrationType") == "Unregistered"
 
+    # ---- 3rd Schedule: Retail Price (MRP) lazmi ----
+    from .tax_engine import SALE_TYPES as _ST
+    for it in raw_items:
+        st = it.get("saleType", "Goods at standard rate")
+        if _ST.get(st, {}).get("retail_price_based") and not (
+                float(it.get("fixedNotifiedValueOrRetailPrice", 0) or 0) > 0):
+            return JsonResponse({"ok": False,
+                "error": "3rd Schedule item pe Retail Price (MRP) zaroori hai"},
+                status=400)
+
     # ---- Re-run the tax engine server-side (authoritative) ----
     total_value = total_st = total_ft = Decimal("0")
     clean_items = []
@@ -190,7 +200,7 @@ def submit_invoice(request):
             })
 
     # ---- Call FBR (mock or real, per settings) ----
-    client = get_fbr_client()
+    client = get_fbr_client(profile)
     result = client.post_invoice(payload)
     vr = result.get("validationResponse", {})
     valid = vr.get("status") == "Valid"
@@ -474,12 +484,19 @@ def seller_profile(request):
     edit_id = request.GET.get("edit") or request.POST.get("edit_id")
     editing = businesses.filter(pk=edit_id).first() if edit_id else None
     saved = False
+    # Delete a business (owner-checked)
+    if request.method == "POST" and request.POST.get("delete_id"):
+        businesses.filter(pk=request.POST.get("delete_id")).delete()
+        from django.shortcuts import redirect
+        return redirect("digital_invoicing:profile")
     if request.method == "POST":
         data = {
             "ntn_cnic": request.POST.get("ntn_cnic", "").strip(),
             "business_name": request.POST.get("business_name", "").strip(),
             "province": request.POST.get("province", "Sindh"),
             "address": request.POST.get("address", "").strip(),
+            "fbr_token": request.POST.get("fbr_token", "").strip(),
+            "use_sandbox": request.POST.get("use_sandbox") == "on",
         }
         if editing:
             for k, v in data.items():
@@ -550,3 +567,114 @@ def activity(request):
     """User ki apni activity — audit log (SaaS transparency)."""
     logs = AuditLog.objects.filter(user=request.user)[:100]
     return render(request, "digital_invoicing/activity.html", {"logs": logs})
+
+
+# ---------------------------------------------------------------------------
+# Buyer management (dedicated) + Sales Tax ATL status
+# ---------------------------------------------------------------------------
+def _current_period():
+    from datetime import date
+    return date.today().strftime("%Y-%m")
+
+
+def _atl_status_for(user, reg_no, period=None):
+    """Buyer ka ATL status is period ke liye (na mile to latest available)."""
+    from .models import ATLStatus
+    if not reg_no:
+        return None
+    period = period or _current_period()
+    rec = ATLStatus.objects.filter(owner=user, reg_no=reg_no, period=period).first()
+    if not rec:
+        rec = ATLStatus.objects.filter(owner=user, reg_no=reg_no).first()
+    return rec
+
+
+@login_required
+def buyers(request):
+    """Buyers manager — list + add/edit/delete + ATL status column."""
+    from .models import Buyer
+    rows = Buyer.objects.filter(owner=request.user)
+    edit_id = request.GET.get("edit") or request.POST.get("edit_id")
+    editing = rows.filter(pk=edit_id).first() if edit_id else None
+    saved = False
+
+    if request.method == "POST" and request.POST.get("delete_id"):
+        rows.filter(pk=request.POST.get("delete_id")).delete()
+        return redirect("digital_invoicing:buyers")
+
+    if request.method == "POST" and not request.POST.get("delete_id"):
+        data = {
+            "business_name": request.POST.get("business_name", "").strip(),
+            "ntn_cnic": request.POST.get("ntn_cnic", "").strip(),
+            "strn": request.POST.get("strn", "").strip(),
+            "registration_type": request.POST.get("registration_type", "Unregistered"),
+            "province": request.POST.get("province", "Sindh"),
+            "address": request.POST.get("address", "").strip(),
+            "fbr_token": request.POST.get("fbr_token", "").strip(),
+            "use_sandbox": request.POST.get("use_sandbox") == "on",
+        }
+        if editing:
+            for k, v in data.items():
+                setattr(editing, k, v)
+            editing.save()
+        else:
+            Buyer.objects.create(owner=request.user, **data)
+        saved = True
+        editing = None
+        rows = Buyer.objects.filter(owner=request.user)
+
+    period = _current_period()
+    buyer_list = []
+    for b in rows:
+        rec = _atl_status_for(request.user, b.ntn_cnic or b.strn, period)
+        buyer_list.append({"b": b, "atl": rec.status if rec else None,
+                           "atl_period": rec.period if rec else None})
+
+    from .models import SellerProfile
+    return render(request, "digital_invoicing/buyers.html", {
+        "buyer_list": buyer_list, "editing": editing, "saved": saved,
+        "provinces": [p[0] for p in SellerProfile.PROVINCES],
+        "reg_types": ["Registered", "Unregistered"],
+        "period": period,
+    })
+
+
+@login_required
+def atl_upload(request):
+    """FBR Sales Tax ATL CSV upload — reg_no + status (+ optional period).
+    CSV headers (flexible): reg_no/registration/ntn/strn, status, period."""
+    from .models import ATLStatus
+    import csv, io
+    result = None
+    if request.method == "POST" and request.FILES.get("atl_file"):
+        period = request.POST.get("period", "").strip() or _current_period()
+        f = request.FILES["atl_file"]
+        try:
+            text = f.read().decode("utf-8-sig", errors="ignore")
+            reader = csv.DictReader(io.StringIO(text))
+            # normalise header names
+            def pick(row, *names):
+                for n in names:
+                    for k in row:
+                        if k and k.strip().lower() == n:
+                            return (row[k] or "").strip()
+                return ""
+            n = 0
+            for row in reader:
+                reg = pick(row, "reg_no", "registration_no", "registration",
+                           "ntn", "strn", "cnic", "registrationno")
+                if not reg:
+                    continue
+                status = pick(row, "status", "atl_status", "active") or "Active"
+                status = "Active" if status.lower().startswith(("a", "1", "y")) else "Inactive"
+                p = pick(row, "period", "month") or period
+                ATLStatus.objects.update_or_create(
+                    owner=request.user, reg_no=reg, period=p,
+                    defaults={"status": status})
+                n += 1
+            result = f"{n} records imported for {period}."
+            log_event(request, "profile_saved", detail_note=f"ATL upload: {n} ({period})")
+        except Exception as e:
+            result = f"Upload error: {e}"
+    return render(request, "digital_invoicing/atl_upload.html",
+                  {"result": result, "period": _current_period()})

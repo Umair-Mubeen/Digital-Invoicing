@@ -150,12 +150,18 @@
         <div>
           <div class="sub-h">Seller / Business <a href="{% url 'digital_invoicing:profile' %}" style="font-weight:600;color:var(--green-d);text-transform:none;font-size:11px">+ manage</a></div>
           <div class="grid" style="gap:11px">
-            <div class="field"><label>Business select karo <span class="req">*</span></label>
+            <div class="field"><label>Business {% if businesses|length > 1 %}select karo{% endif %} <span class="req">*</span></label>
+              {% if businesses|length > 1 %}
               <select id="sellerProfileId" onchange="fillSeller()">
                 {% for b in businesses %}
                   <option value="{{ b.pk }}">{{ b.business_name }} — {{ b.ntn_cnic }}</option>
                 {% endfor %}
-              </select></div>
+              </select>
+              {% else %}
+              <input id="sellerProfileId" type="hidden" value="{{ businesses.0.pk }}">
+              <input value="{{ businesses.0.business_name }} — {{ businesses.0.ntn_cnic }}" readonly
+                     style="background:#f2f6fa;color:var(--muted)">
+              {% endif %}</div>
             <div class="grid g2" style="gap:11px">
               <div class="field"><label>NTN / CNIC</label><input id="sellerNTNCNIC" readonly style="background:#f2f6fa;color:var(--muted)"></div>
               <div class="field"><label>Province</label><input id="sellerProvince" readonly style="background:#f2f6fa;color:var(--muted)"></div>
@@ -175,7 +181,7 @@
             </div>
             <div class="field" style="position:relative"><label>Business Name <span class="req">*</span></label>
               <input id="buyerBusinessName" value="" autocomplete="off"
-                     oninput="buyerSuggest(this)" onfocus="buyerSuggest(this)"></div>
+                     oninput="buyerSuggest(this)"></div>
             <div class="grid g2" style="gap:11px">
               <div class="field"><label>Province <span class="req">*</span></label>
                 <select id="buyerProvince"><option>Sindh</option><option>Punjab</option><option>KPK</option><option>Balochistan</option><option>Islamabad</option><option>AJK</option><option>Gilgit-Baltistan</option></select></div>
@@ -264,8 +270,8 @@ function closeBuyer(){ if(bBox){bBox.remove(); bBox=null;} }
 function buyerSuggest(input){
   const q=input.value.trim().toLowerCase();
   closeBuyer();
-  let rows = BUYERS;
-  if(q) rows = BUYERS.filter(b => b.name.toLowerCase().includes(q) || (b.ntn||'').includes(q));
+  if(q.length < 1){ return; }   // khali pe list nahi — sirf type karne pe
+  let rows = BUYERS.filter(b => b.name.toLowerCase().includes(q) || (b.ntn||'').includes(q));
   if(!rows.length) return;
   bBox=document.createElement('div'); bBox.className='ac-box';
   const r=input.getBoundingClientRect();
@@ -483,7 +489,8 @@ function hsSuggest(input, itemId){
         input.value=rw.hS_CODE;
         upd(itemId,'hsCode',rw.hS_CODE);
         const it=items.find(x=>x.id===itemId);
-        if(it && !it.desc){ it.desc=rw.description; }
+        // HS select pe description hamesha us HS ki set karo (render se input bhi update hoga)
+        if(it){ it.desc=rw.description; }
         // UOM: DB row mein hai to wahi, warna reference API se
         if(rw.uoms && rw.uoms.length && it){ it.uoM = rw.uoms[0]; }
         else { try{
@@ -557,6 +564,12 @@ function buildPayload(){
 
 async function submitInvoice(btn){
   if(!items.length){ toast("Pehle ek item add karein.","warn"); return; }
+  // 3rd Schedule items pe Retail Price (MRP) zaroori hai
+  const missingMRP = items.find(it => SALE_TYPES[it.saleType].retail && !((+it.mrp)>0));
+  if(missingMRP){
+    toast("3rd Schedule item pe Retail Price (MRP) zaroori hai.","warn");
+    return;
+  }
   const payload = buildPayload();
   const label = btn.innerHTML;
   btn.disabled=true;

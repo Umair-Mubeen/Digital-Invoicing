@@ -1,0 +1,50 @@
+{% extends "digital_invoicing/base_di.html" %}
+{% block na_buyers %}on{% endblock %}
+{% block di_title_text %}ATL Upload{% endblock %}
+{% block di_title %}Sales Tax ATL Upload{% endblock %}
+{% block di_subtitle %}FBR Active Taxpayer List — mahina-wise status{% endblock %}
+{% block di_actions %}<a class="btn-g" style="background:var(--navy)" href="{% url 'digital_invoicing:buyers' %}">← Buyers</a>{% endblock %}
+
+{% block di_head %}
+<style>
+  .up-card{max-width:620px}
+  .body{padding:22px}
+  .field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+  .field label{font-size:11.5px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.05em}
+  .field input{padding:10px 12px;border:1px solid var(--line-2);border-radius:9px;font:inherit;font-size:13.5px;background:#FCFDFE}
+  .drop{border:2px dashed var(--line-2);border-radius:12px;padding:26px;text-align:center;background:#FBFCFE}
+  .drop input{margin-top:8px}
+  .okmsg{background:var(--green-soft);color:var(--green-d);border:1px solid #BEE8D3;border-radius:9px;padding:12px 15px;font-weight:600;font-size:13px;margin-bottom:16px}
+  .info{background:#F0F6FC;border:1px solid #D3E3F2;border-radius:10px;padding:13px 15px;font-size:12.5px;color:var(--muted);line-height:1.6;margin-top:14px}
+  .info code{background:#fff;padding:1px 6px;border-radius:5px;border:1px solid var(--line);font-size:11.5px}
+</style>
+{% endblock %}
+
+{% block di_content %}
+<div class="di-card up-card">
+  <h3>Upload ATL file</h3>
+  <div class="body">
+    {% if result %}<div class="okmsg">✓ {{ result }}</div>{% endif %}
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div class="field">
+        <label>Period (jis mahine ki ATL)</label>
+        <input name="period" value="{{ period }}" placeholder="2026-07">
+      </div>
+      <div class="field">
+        <label>ATL CSV file</label>
+        <div class="drop">
+          📄 FBR ki Sales Tax ATL CSV select karein
+          <br><input type="file" name="atl_file" accept=".csv" required>
+        </div>
+      </div>
+      <button type="submit" class="btn-g" style="width:100%;padding:11px;font-weight:700">⬆ Import ATL</button>
+    </form>
+    <div class="info">
+      <b>CSV format (flexible):</b> headers mein <code>reg_no</code> (ya ntn/strn/cnic) aur <code>status</code> (Active/Inactive) hone chahiye. <code>period</code> column optional — na ho to upar wala period use hoga.<br>
+      Misaal: <code>reg_no,status</code> → <code>1234567,Active</code><br>
+      FBR ATL download: portal se Sales Tax ATL nikaal ke, ya apni list bana ke.
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -14,6 +14,8 @@ urlpatterns = [
     path("create/", views.create_invoice, name="create"),
     path("profile/", views.seller_profile, name="profile"),
     path("activity/", views.activity, name="activity"),
+    path("buyers/", views.buyers, name="buyers"),
+    path("atl-upload/", views.atl_upload, name="atl_upload"),
     # Auth (self-service SaaS onboarding)
     path("signup/", views.signup, name="signup"),
     path("login/", views.login_view, name="login"),
