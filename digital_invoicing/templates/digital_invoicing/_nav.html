@@ -2,5 +2,8 @@
   <a href="{% url 'digital_invoicing:create' %}" class="{% if active == 'create' %}on{% endif %}">+ Create Invoice</a>
   <a href="{% url 'digital_invoicing:list' %}" class="{% if active == 'list' %}on{% endif %}">Invoices</a>
   <a href="{% url 'digital_invoicing:dashboard' %}" class="{% if active == 'dashboard' %}on{% endif %}">Dashboard</a>
+  <a href="{% url 'digital_invoicing:reports' %}" class="{% if active == 'reports' %}on{% endif %}">📊 Reports</a>
+  <a href="{% url 'digital_invoicing:products' %}" class="{% if active == 'products' %}on{% endif %}">📦 Products</a>
+  <a href="{% url 'digital_invoicing:purchases' %}" class="{% if active == 'purchases' %}on{% endif %}">🛒 Purchases</a>
   <a href="{% url 'digital_invoicing:profile' %}" class="{% if active == 'profile' %}on{% endif %}">⚙ Business Profile</a>
 </div>

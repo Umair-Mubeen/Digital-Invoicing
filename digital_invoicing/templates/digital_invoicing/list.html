@@ -63,7 +63,16 @@
         <td class="num" style="font-weight:600">Rs {{ inv.invoice_total|floatformat:0 }}</td>
         <td style="color:var(--muted)">{{ inv.invoice_date }}</td>
         <td><span class="pill {{ inv.status }}">{{ inv.get_status_display }}</span></td>
-        <td><a href="{% url 'digital_invoicing:print' inv.pk %}" style="color:var(--green-d);font-weight:600;text-decoration:none">🖨 Print</a></td>
+        <td style="white-space:nowrap">
+          <a href="{% url 'digital_invoicing:print' inv.pk %}" style="color:var(--green-d);font-weight:600;text-decoration:none">🖨 Print</a>
+          {% if inv.status == 'failed' %}
+            <button type="button" onclick="rowAction(this,'{% url 'digital_invoicing:resubmit' inv.pk %}','Resubmit to FBR?')"
+              style="margin-left:8px;border:1px solid var(--green-d);color:var(--green-d);background:#fff;border-radius:6px;padding:2px 8px;cursor:pointer;font-weight:600">↻ Resubmit</button>
+          {% elif inv.status == 'valid' and not inv.is_locked %}
+            <button type="button" onclick="rowAction(this,'{% url 'digital_invoicing:cancel' inv.pk %}','IRIS par cancel ki hai? System mein bhi Cancelled mark ho jayegi.')"
+              style="margin-left:8px;border:1px solid #c0392b;color:#c0392b;background:#fff;border-radius:6px;padding:2px 8px;cursor:pointer;font-weight:600">✕ Cancel</button>
+          {% endif %}
+        </td>
       </tr>
     {% endfor %}
     </tbody>
@@ -90,4 +99,18 @@
   </div>
   {% endif %}
 </div>
+
+<script>
+function getCookie(n){const v=document.cookie.match('(^|;)\\s*'+n+'\\s*=\\s*([^;]+)');return v?v.pop():'';}
+async function rowAction(btn,url,msg){
+  if(!confirm(msg)) return;
+  btn.disabled=true; btn.textContent='…';
+  try{
+    const r=await fetch(url,{method:'POST',headers:{'X-CSRFToken':getCookie('csrftoken')}});
+    const d=await r.json();
+    if(d.ok){ location.reload(); }
+    else{ alert(d.error||(d.validationResponse&&d.validationResponse.error)||'Failed'); btn.disabled=false; btn.textContent='Retry'; }
+  }catch(e){ alert('Network error'); btn.disabled=false; }
+}
+</script>
 {% endblock %}

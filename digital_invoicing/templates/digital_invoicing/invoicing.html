@@ -231,6 +231,7 @@
 
       <div class="actions">
         <button type="button" class="btn btn-ghost" onclick="viewJSON()">View JSON</button>
+        <button type="button" class="btn" style="border:1px solid var(--green-d);color:var(--green-d);background:#fff" onclick="validateInvoice(this)">✓ Validate with FBR</button>
         <button type="button" class="btn btn-green" onclick="submitInvoice(this)">Submit to FBR</button>
       </div>
     </div>
@@ -361,7 +362,10 @@ function getCookie(name){
 }
 
 /* ---- Tax engine (display only — server recomputes authoritatively) ---- */
-const SALE_TYPES = {
+/* Phase 7: rules server (DB rule tables) se aate hain — admin change = UI change */
+const TAX_CFG = {{ tax_cfg|default:"null"|safe }};
+const SALE_TYPES = (TAX_CFG && Object.fromEntries(Object.entries(TAX_CFG.saleTypes).map(
+  ([n,c])=>[n,{rate:c.rate,further:c.further,sro:c.sro,st:c.st,retail:c.retail}]))) || {
   "Goods at standard rate": {rate:18, further:true,  sro:"",        st:true},
   "Goods at reduced rate":  {rate:5,  further:true,  sro:"8th Sch", st:true},
   "3rd Schedule Goods":     {rate:18, further:false, sro:"3rd Sch", st:true, retail:true},
@@ -369,15 +373,9 @@ const SALE_TYPES = {
   "Zero-rated Goods":       {rate:0,  further:false, sro:"5th Sch", st:true},
   "Services":               {rate:15, further:false, sro:"",        st:true},
 };
-const FURTHER_TAX_RATE = 4;
-// SRO 648(I)/2013 — in HS prefixes pe further tax NAHI (server se match)
-const FT_EXEMPT_HS = [
-  // SRO 648(I)/2013
-  "3102","3103","3104","3105","2710","2711","8703","8704","8711","1001","1006","1101","0401","0402","3004",
-  // SRO 1223(I)/2021 — steel sector
-  "7207","7208","7209","7210","7211","7212","7213","7214","7215","7216","7217","7218","7219","7220","7221","7222","7223","7224","7225","7226","7227","7228","7229","7301","7302","7303","7304","7305","7306","7307","7308",
-  // SRO 1223(I)/2021 — edible oil sector
-  "1507","1508","1509","1510","1511","1512","1513","1514","1515","1516","1517","1518"
+const FURTHER_TAX_RATE = (TAX_CFG && TAX_CFG.furtherRate) || 4;
+const FT_EXEMPT_HS = (TAX_CFG && TAX_CFG.ftExemptHS) || [
+  "3102","3103","3104","3105","2710","2711","8703","8704","8711","1001","1006","1101","0401","0402","3004"
 ];
 function ftExemptHS(hs){ const d=(hs||"").replace(/\./g,""); return FT_EXEMPT_HS.some(p=>d.startsWith(p)); }
 let items = [];
@@ -651,5 +649,24 @@ document.getElementById('invoiceDate').value = new Date().toISOString().split('T
 fillSeller();
 renderSavedChips();
 addRow();
+
+async function validateInvoice(btn){
+  const p = buildPayload(); if(!p) return;
+  btn.disabled=true; const t0=btn.textContent; btn.textContent='Validating…';
+  try{
+    const r = await fetch("{% url 'digital_invoicing:validate' %}", {method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')},
+      body: JSON.stringify(p)});
+    const d = await r.json();
+    if(d.ok){ alert('✓ FBR validation PASSED — invoice submit karne ke liye tayyar hai.'); }
+    else{
+      const errs=((d.validationResponse&&d.validationResponse.invoiceStatuses)||[])
+        .filter(s=>s.errorCode).map(s=>s.errorCode+': '+s.error).join('\n');
+      alert('✗ Validation failed:\n'+(errs||d.error||(d.validationResponse&&d.validationResponse.error)||''));
+    }
+  }catch(e){ alert('Network error'); }
+  btn.disabled=false; btn.textContent=t0;
+}
+
 </script>
 {% endblock %}

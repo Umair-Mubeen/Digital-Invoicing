@@ -1,0 +1,4 @@
+Django>=6.0,<6.1
+requests>=2.31
+mysqlclient>=2.2
+cryptography>=42.0

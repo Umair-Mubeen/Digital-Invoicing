@@ -58,3 +58,45 @@ class ATLStatusAdmin(admin.ModelAdmin):
     list_display = ("reg_no", "period", "status", "owner", "uploaded_at")
     list_filter = ("status", "period")
     search_fields = ("reg_no",)
+
+# ---- Phase 7: Tax rule tables (Finance Act changes yahan se, code se nahi) ----
+from .models import TaxSaleType, FurtherTaxConfig, FurtherTaxExemptHS, TaxScenario
+from .tax_engine import invalidate_rules_cache
+
+
+class _RuleAdmin(admin.ModelAdmin):
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        invalidate_rules_cache()
+
+    def delete_model(self, request, obj):
+        super().delete_model(request, obj)
+        invalidate_rules_cache()
+
+
+@admin.register(TaxSaleType)
+class TaxSaleTypeAdmin(_RuleAdmin):
+    list_display = ("name", "rate", "charges_st", "further_tax_applies",
+                    "sro_schedule", "retail_price_based",
+                    "effective_from", "effective_to", "is_active")
+    list_filter = ("is_active", "charges_st", "further_tax_applies")
+    search_fields = ("name", "legal_reference")
+
+
+@admin.register(FurtherTaxConfig)
+class FurtherTaxConfigAdmin(_RuleAdmin):
+    list_display = ("rate", "effective_from", "effective_to", "is_active")
+
+
+@admin.register(FurtherTaxExemptHS)
+class FurtherTaxExemptHSAdmin(_RuleAdmin):
+    list_display = ("hs_prefix", "description", "sro_reference",
+                    "effective_from", "effective_to", "is_active")
+    list_filter = ("sro_reference", "is_active")
+    search_fields = ("hs_prefix", "description")
+
+
+@admin.register(TaxScenario)
+class TaxScenarioAdmin(admin.ModelAdmin):
+    list_display = ("code", "description", "sale_type", "is_active")
+    search_fields = ("code", "description", "sale_type")

@@ -10,22 +10,43 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
+def env(key, default=""):
+    return os.environ.get(key, default)
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-#dr^lmn#d^v@644xdmm1wg^@*m*o(oc_p(=27=p@!w*kn2s(r='
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+def env_bool(key, default=False):
+    v = os.environ.get(key)
+    if v is None:
+        return default
+    return v.strip().lower() in ("1", "true", "yes", "on")
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', 'testserver']
+
+# SECURITY: production mein DJANGO_SECRET_KEY env var LAZMI set karein.
+# Neeche wali dev-only key sirf local development ke liye hai.
+SECRET_KEY = env("DJANGO_SECRET_KEY",
+                 "django-insecure-dev-only-#dr^lmn#d^v@644xdmm1wg^@*m*o(oc")
+
+# Default False (production-safe). Local dev: DJANGO_DEBUG=1 set karein.
+DEBUG = env_bool("DJANGO_DEBUG", False)
+
+ALLOWED_HOSTS = [h.strip() for h in
+                 env("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost,testserver").split(",")
+                 if h.strip()]
+
+# Production hardening (env-driven; local HTTP dev par off rehta hai)
+if env_bool("DJANGO_SECURE", not DEBUG and env("DJANGO_SECRET_KEY") != ""):
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 
 
 # Application definition
@@ -62,6 +83,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'digital_invoicing.context_processors.fbr_mode',
             ],
         },
     },
@@ -73,20 +95,26 @@ WSGI_APPLICATION = 'taxbuddy_invoicing.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'digital-invoicing',
-        'USER': 'root',            # your MySQL user
-        'PASSWORD': '', # your MySQL user's password
-        'HOST': 'localhost',
-        'PORT': '3306',
-
-
-
-
+if env("DB_ENGINE", "mysql") == "sqlite":
+    # Tests/CI ke liye: DB_ENGINE=sqlite
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': env('DB_NAME', 'digital-invoicing'),
+            'USER': env('DB_USER', 'root'),
+            'PASSWORD': env('DB_PASSWORD', ''),
+            'HOST': env('DB_HOST', 'localhost'),
+            'PORT': env('DB_PORT', '3306'),
+            'CONN_MAX_AGE': 60,
+        }
+    }
 
 
 # Password validation
@@ -124,14 +152,47 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Existing DB int PKs ke saath match (BigAutoField switch = table rewrite; public_id UUID already added)
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 
 
 # ---- Login flow ----
 LOGIN_URL = "/admin/login/"
 LOGIN_REDIRECT_URL = "/digital-invoicing/create/"
 
-# ---- FBR Digital Invoicing ----
-FBR_USE_MOCK = True          # PRAL token milne par False karein
-FBR_API_TOKEN = ""
-FBR_POST_URL = "https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata_sb"       # sandbox
-FBR_VALIDATE_URL = "https://gw.fbr.gov.pk/di_data/v1/di/validateinvoicedata_sb"
+# ---- FBR Digital Invoicing (PRAL Technical Spec v1.12) ----
+# Per-business tokens SellerProfile.fbr_token mein hain (preferred, SaaS).
+# Ye globals sirf legacy/single-tenant fallback hain.
+FBR_USE_MOCK = env_bool("FBR_USE_MOCK", True)   # PRAL token milne par FBR_USE_MOCK=0
+FBR_API_TOKEN = env("FBR_API_TOKEN", "")
+FBR_POST_URL_SANDBOX = "https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata_sb"
+FBR_POST_URL_PRODUCTION = "https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata"
+FBR_VALIDATE_URL_SANDBOX = "https://gw.fbr.gov.pk/di_data/v1/di/validateinvoicedata_sb"
+FBR_VALIDATE_URL_PRODUCTION = "https://gw.fbr.gov.pk/di_data/v1/di/validateinvoicedata"
+FBR_POST_URL = FBR_POST_URL_SANDBOX             # legacy alias (old code paths)
+
+
+# ---- Logging (Phase 16) ----
+import os as _os
+_LOG_DIR = env("DJANGO_LOG_DIR", "")
+_handlers = {"console": {"class": "logging.StreamHandler"}}
+_use = ["console"]
+if _LOG_DIR:
+    _os.makedirs(_LOG_DIR, exist_ok=True)
+    _handlers["file"] = {
+        "class": "logging.handlers.RotatingFileHandler",
+        "filename": _os.path.join(_LOG_DIR, "app.log"),
+        "maxBytes": 5 * 1024 * 1024, "backupCount": 5,
+    }
+    _use = ["console", "file"]
+LOGGING = {
+    "version": 1, "disable_existing_loggers": False,
+    "formatters": {"std": {
+        "format": "{asctime} {levelname} {name} {message}", "style": "{"}},
+    "handlers": {k: {**v, "formatter": "std"} for k, v in _handlers.items()},
+    "root": {"handlers": _use, "level": env("DJANGO_LOG_LEVEL", "INFO")},
+    "loggers": {"django.request": {"handlers": _use, "level": "WARNING",
+                                   "propagate": False}},
+}

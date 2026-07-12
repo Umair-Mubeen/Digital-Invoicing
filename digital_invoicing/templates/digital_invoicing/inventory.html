@@ -1,0 +1,42 @@
+{% extends "digital_invoicing/base_di.html" %}
+{% block na_inventory %}on{% endblock %}
+{% block di_title_text %}Inventory{% endblock %}
+{% block di_title %}Inventory{% endblock %}
+{% block di_subtitle %}Stock levels — sale par auto-out, purchase par auto-in{% endblock %}
+{% block di_content %}
+<div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">Manual adjustment (+ in / − out)</h3>
+  <form method="post" style="display:flex;gap:10px;flex-wrap:wrap">
+    {% csrf_token %}
+    <select name="product_id" required style="padding:8px;border:1px solid var(--line);border-radius:8px;min-width:220px">
+      {% for p in products %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
+    </select>
+    <input name="quantity" type="number" step="0.0001" required placeholder="Qty (+/−)" style="padding:8px;border:1px solid var(--line);border-radius:8px;width:130px">
+    <input name="note" placeholder="Note" style="padding:8px;border:1px solid var(--line);border-radius:8px;flex:1;min-width:180px">
+    <button class="btn-g" type="submit">Adjust</button>
+  </form>
+</div>
+<div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">Current stock</h3>
+  <table style="width:100%;border-collapse:collapse">
+    <tr style="text-align:left;color:var(--muted)"><th style="padding:8px 6px">Product</th><th class="num">On hand</th></tr>
+    {% for p in products %}
+      <tr style="border-top:1px solid var(--line)"><td style="padding:8px 6px">{{ p.name }}</td>
+        <td class="num" style="font-weight:600;{% if p.stock < 0 %}color:#c0392b{% endif %}">{{ p.stock|floatformat:"-2" }}</td></tr>
+    {% empty %}<tr><td colspan="2" style="padding:14px 6px;color:var(--muted)">Stock-tracked products nahi — Products page se add karein.</td></tr>{% endfor %}
+  </table>
+</div>
+<div class="card">
+  <h3 style="margin-top:0">Recent movements</h3>
+  <table style="width:100%;border-collapse:collapse">
+    <tr style="text-align:left;color:var(--muted)"><th style="padding:8px 6px">When</th><th>Product</th><th class="num">Qty</th><th>Kind</th><th>Ref</th></tr>
+    {% for m in moves %}
+      <tr style="border-top:1px solid var(--line)">
+        <td style="padding:8px 6px;color:var(--muted)">{{ m.created_at|date:"d M H:i" }}</td>
+        <td>{{ m.product.name }}</td>
+        <td class="num" style="font-weight:600;{% if m.quantity < 0 %}color:#c0392b{% else %}color:var(--green-d){% endif %}">{{ m.quantity|floatformat:"-2" }}</td>
+        <td>{{ m.get_kind_display }}</td><td>{{ m.reference }} {{ m.note }}</td></tr>
+    {% empty %}<tr><td colspan="5" style="padding:14px 6px;color:var(--muted)">Koi movement nahi.</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

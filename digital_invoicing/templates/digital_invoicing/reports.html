@@ -1,0 +1,117 @@
+{% extends "digital_invoicing/base_di.html" %}
+{% block na_reports %}on{% endblock %}
+{% block di_title_text %}Reports{% endblock %}
+{% block di_title %}Tax Reports{% endblock %}
+{% block di_subtitle %}Return-filing ready — sirf VALID invoices tax summary mein{% endblock %}
+
+{% block di_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block di_content %}
+<form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:18px">
+  <select name="biz" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+    <option value="">All businesses</option>
+    {% for b in businesses %}
+      <option value="{{ b.pk }}" {% if biz == b.pk|stringformat:"s" %}selected{% endif %}>{{ b.business_name }}</option>
+    {% endfor %}
+  </select>
+  <input type="month" name="period" value="{{ period }}"
+         style="padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+  <button class="btn-g" type="submit">Apply</button>
+  <a class="btn-g" style="background:var(--navy)"
+     href="{% url 'digital_invoicing:sales_register_csv' %}?biz={{ biz }}&period={{ period }}">
+     ⬇ Sales Register CSV (Annex-C style)</a>
+</form>
+
+<div class="stats" style="margin-bottom:20px">
+  <div class="stat"><div><div class="lbl">Valid invoices</div>
+    <div class="val">{{ summary.totals.n }}</div></div></div>
+  <div class="stat"><div><div class="lbl">Taxable value</div>
+    <div class="val">Rs {{ summary.totals.value|floatformat:0 }}</div></div></div>
+  <div class="stat"><div><div class="lbl">Sales tax</div>
+    <div class="val">Rs {{ summary.totals.st|floatformat:0 }}</div></div></div>
+  <div class="stat"><div><div class="lbl">Further tax</div>
+    <div class="val">Rs {{ summary.totals.ft|floatformat:0 }}</div></div></div>
+  <div class="stat"><div><div class="lbl">Input tax (purchases)</div>
+    <div class="val">Rs {{ input_tax.input_tax|floatformat:0 }}</div>
+    <div class="sub2">{{ input_tax.n }} purchase(s)</div></div></div>
+  <div class="stat"><div><div class="lbl">Net ST payable (output − input)</div>
+    <div class="val">Rs {{ net_payable|floatformat:0 }}</div></div></div>
+</div>
+
+
+<div class="chartcard" style="margin-bottom:20px">
+  <h3>Tax position — {{ period }}</h3>
+  <div class="hint">Output tax (sales) − Input tax (purchases) = Net payable</div>
+  <canvas id="chTax" height="60"></canvas>
+</div>
+<script>
+Chart.defaults.font.family = "Inter, system-ui, sans-serif";
+new Chart(document.getElementById('chTax'), {
+  type:'bar',
+  data:{labels:['Output tax (sales)','Input tax (purchases)','Net payable'],
+    datasets:[{data:[{{ summary.totals.st|default:0 }},{{ input_tax.input_tax|default:0 }},{{ net_payable|default:0 }}],
+      backgroundColor:['rgba(10,38,71,.85)','rgba(13,158,114,.85)','rgba(184,134,11,.9)'],
+      borderRadius:6, maxBarThickness:34}]},
+  options:{indexAxis:'y', plugins:{legend:{display:false}},
+    scales:{x:{beginAtZero:true, grid:{color:'#E3EAF2'},
+      ticks:{callback:v=>'Rs '+(v>=1e6?(v/1e6)+'M':v>=1e3?(v/1e3)+'K':v)}},
+      y:{grid:{display:false}}}}
+});
+</script>
+
+<div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">Invoice type breakdown — {{ period }}</h3>
+  <table style="width:100%;border-collapse:collapse">
+    <tr style="text-align:left;color:var(--muted)">
+      <th style="padding:8px 6px">Type</th><th>Count</th>
+      <th class="num">Value</th><th class="num">Sales Tax</th><th class="num">Further Tax</th></tr>
+    {% for r in summary.by_type %}
+      <tr style="border-top:1px solid var(--line)">
+        <td style="padding:8px 6px">{{ r.invoice_type }}</td><td>{{ r.n }}</td>
+        <td class="num">Rs {{ r.value|floatformat:0 }}</td>
+        <td class="num">Rs {{ r.st|floatformat:0 }}</td>
+        <td class="num">Rs {{ r.ft|floatformat:0 }}</td></tr>
+    {% empty %}
+      <tr><td colspan="5" style="padding:14px 6px;color:var(--muted)">Is period mein koi valid invoice nahi.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">Buyer-wise (top by value)</h3>
+  <table style="width:100%;border-collapse:collapse">
+    <tr style="text-align:left;color:var(--muted)">
+      <th style="padding:8px 6px">Buyer</th><th>NTN/CNIC</th><th>Reg</th>
+      <th>Invoices</th><th class="num">Value</th><th class="num">ST</th><th class="num">FT</th></tr>
+    {% for b in buyers %}
+      <tr style="border-top:1px solid var(--line)">
+        <td style="padding:8px 6px">{{ b.buyer_business_name }}</td>
+        <td>{{ b.buyer_ntn_cnic|default:"—" }}</td>
+        <td>{{ b.buyer_registration_type }}</td><td>{{ b.n }}</td>
+        <td class="num">Rs {{ b.value|floatformat:0 }}</td>
+        <td class="num">Rs {{ b.st|floatformat:0 }}</td>
+        <td class="num">Rs {{ b.ft|floatformat:0 }}</td></tr>
+    {% empty %}
+      <tr><td colspan="7" style="padding:14px 6px;color:var(--muted)">Koi data nahi.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">Status breakdown (sab statuses)</h3>
+  <table style="width:100%;border-collapse:collapse">
+    <tr style="text-align:left;color:var(--muted)">
+      <th style="padding:8px 6px">Status</th><th>Count</th><th class="num">Value</th></tr>
+    {% for r in statuses %}
+      <tr style="border-top:1px solid var(--line)">
+        <td style="padding:8px 6px"><span class="pill {{ r.status }}">{{ r.status }}</span></td>
+        <td>{{ r.n }}</td>
+        <td class="num">Rs {{ r.value|floatformat:0 }}</td></tr>
+    {% empty %}
+      <tr><td colspan="3" style="padding:14px 6px;color:var(--muted)">Koi data nahi.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

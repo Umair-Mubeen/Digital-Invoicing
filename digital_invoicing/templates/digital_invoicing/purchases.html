@@ -1,0 +1,103 @@
+{% extends "digital_invoicing/base_di.html" %}
+{% block na_purchases %}on{% endblock %}
+{% block di_title_text %}Purchases{% endblock %}
+{% block di_title %}Purchases{% endblock %}
+{% block di_subtitle %}Input tax records — FBR par submit nahi hote (local books){% endblock %}
+{% block di_content %}
+<div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">New purchase invoice</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px">
+    <select id="p_supplier" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+      <option value="">— Supplier (optional) —</option>
+    </select>
+    <input id="p_supplier_name" placeholder="Supplier name *" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+    <input id="p_ntn" placeholder="Supplier NTN/CNIC" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+    <input id="p_invno" placeholder="Supplier invoice #" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+    <input id="p_date" type="date" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+    <select id="p_biz" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+      {% for b in businesses %}<option value="{{ b.pk }}">{{ b.business_name }}</option>{% endfor %}
+    </select>
+  </div>
+  <table style="width:100%;border-collapse:collapse" id="p_items">
+    <tr style="text-align:left;color:var(--muted)"><th style="padding:6px">Product/Description</th><th>Qty</th><th>Value (excl. ST)</th><th>Input ST</th><th></th></tr>
+  </table>
+  <div style="display:flex;gap:10px;margin-top:12px;align-items:center">
+    <button type="button" class="btn-g" style="background:var(--navy)" onclick="addPRow()">+ Item</button>
+    <button type="button" class="btn-g" onclick="savePurchase(this)">Save Purchase</button>
+    <span id="p_totals" style="margin-left:auto;font-weight:600"></span>
+  </div>
+</div>
+<div class="card">
+  <h3 style="margin-top:0">Recent purchases</h3>
+  <table style="width:100%;border-collapse:collapse">
+    <tr style="text-align:left;color:var(--muted)"><th style="padding:8px 6px">Date</th><th>Supplier</th><th>Inv #</th><th class="num">Value</th><th class="num">Input Tax</th><th class="num">Total</th></tr>
+    {% for p in purchases %}
+      <tr style="border-top:1px solid var(--line)">
+        <td style="padding:8px 6px;color:var(--muted)">{{ p.invoice_date }}</td>
+        <td style="font-weight:600">{{ p.supplier_name }}</td>
+        <td>{{ p.supplier_invoice_no|default:"—" }}</td>
+        <td class="num">Rs {{ p.total_value|floatformat:0 }}</td>
+        <td class="num">Rs {{ p.total_sales_tax|floatformat:0 }}</td>
+        <td class="num" style="font-weight:600">Rs {{ p.invoice_total|floatformat:0 }}</td></tr>
+    {% empty %}<tr><td colspan="6" style="padding:14px 6px;color:var(--muted)">Koi purchase nahi.</td></tr>{% endfor %}
+  </table>
+</div>
+<script>
+const SUPPLIERS = {{ suppliers_json|safe }};
+const PRODUCTS = {{ products_json|safe }};
+const sup = document.getElementById('p_supplier');
+SUPPLIERS.forEach(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.name;o.dataset.ntn=s.ntn;sup.appendChild(o);});
+sup.onchange=()=>{const o=sup.selectedOptions[0];if(o&&o.value){document.getElementById('p_supplier_name').value=o.textContent;document.getElementById('p_ntn').value=o.dataset.ntn||'';}};
+document.getElementById('p_date').value = new Date().toISOString().slice(0,10);
+let prow=0;
+function addPRow(){
+  prow++;
+  const tr=document.createElement('tr'); tr.style.borderTop='1px solid var(--line)'; tr.id='pr'+prow;
+  const opts = PRODUCTS.map(p=>`<option value="${p.id}" data-price="${p.price}">${p.name}</option>`).join('');
+  tr.innerHTML=`<td style="padding:6px">
+      <select onchange="pickProd(this)" style="padding:6px;border:1px solid var(--line);border-radius:6px;width:100%">
+        <option value="">— free text —</option>${opts}</select>
+      <input class="pdesc" placeholder="Description" style="padding:6px;border:1px solid var(--line);border-radius:6px;width:100%;margin-top:4px"></td>
+    <td><input class="pqty" type="number" step="0.0001" value="1" style="padding:6px;border:1px solid var(--line);border-radius:6px;width:90px" oninput="ptot()"></td>
+    <td><input class="pval" type="number" step="0.01" value="0" style="padding:6px;border:1px solid var(--line);border-radius:6px;width:120px" oninput="ptot()"></td>
+    <td><input class="pst" type="number" step="0.01" value="0" style="padding:6px;border:1px solid var(--line);border-radius:6px;width:110px" oninput="ptot()"></td>
+    <td><button type="button" onclick="this.closest('tr').remove();ptot()" style="border:none;background:none;color:#c0392b;cursor:pointer">✕</button></td>`;
+  document.getElementById('p_items').appendChild(tr);
+}
+function pickProd(sel){
+  const tr=sel.closest('tr'); const o=sel.selectedOptions[0];
+  if(o&&o.value){ tr.querySelector('.pdesc').value=o.textContent;
+    tr.querySelector('.pval').value=o.dataset.price||0; }
+  tr.dataset.productId=o?o.value:''; ptot();
+}
+function ptot(){
+  let v=0,st=0;
+  document.querySelectorAll('#p_items tr[id^=pr]').forEach(tr=>{
+    v+=(+tr.querySelector('.pval').value)||0; st+=(+tr.querySelector('.pst').value)||0;});
+  document.getElementById('p_totals').textContent=`Value Rs ${v.toFixed(0)} · Input ST Rs ${st.toFixed(0)} · Total Rs ${(v+st).toFixed(0)}`;
+}
+function getCookie(n){const v=document.cookie.match('(^|;)\\s*'+n+'\\s*=\\s*([^;]+)');return v?v.pop():'';}
+async function savePurchase(btn){
+  const items=[];
+  document.querySelectorAll('#p_items tr[id^=pr]').forEach(tr=>{
+    items.push({product_id: tr.dataset.productId||null,
+      description: tr.querySelector('.pdesc').value,
+      quantity: tr.querySelector('.pqty').value,
+      value_excl_st: tr.querySelector('.pval').value,
+      sales_tax: tr.querySelector('.pst').value});});
+  const body={header:{supplier_id:sup.value||null,
+      supplier_name:document.getElementById('p_supplier_name').value,
+      supplier_ntn_cnic:document.getElementById('p_ntn').value,
+      supplier_invoice_no:document.getElementById('p_invno').value,
+      invoice_date:document.getElementById('p_date').value,
+      seller_profile_id:document.getElementById('p_biz').value}, items};
+  btn.disabled=true;
+  const r=await fetch("{% url 'digital_invoicing:purchases' %}",{method:'POST',
+    headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')},
+    body:JSON.stringify(body)});
+  const d=await r.json();
+  if(d.ok){location.reload();}else{alert(d.error||'Failed');btn.disabled=false;}
+}
+addPRow();
+</script>
+{% endblock %}

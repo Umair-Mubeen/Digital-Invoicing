@@ -5,6 +5,10 @@
 {% block di_subtitle %}Compliance snapshot — {{ request.user.username }}{% endblock %}
 {% block di_actions %}<a class="btn-g" href="{% url 'digital_invoicing:create' %}">+ New Invoice</a>{% endblock %}
 
+{% block di_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+{% endblock %}
+
 {% block di_content %}
 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
   <a class="btn-g" href="{% url 'digital_invoicing:create' %}">+ New invoice</a>
@@ -39,6 +43,63 @@
     <div><div class="lbl">Further tax</div><div class="val">Rs {{ further_tax|floatformat:0 }}</div></div>
   </div>
 </div>
+
+<div class="chartgrid">
+  <div class="chartcard">
+    <h3>Sales trend — last 6 months</h3>
+    <div class="hint">Taxable value (bars) aur sales tax (line) — sirf valid invoices</div>
+    <canvas id="chTrend" height="120"></canvas>
+  </div>
+  <div class="chartcard">
+    <h3>Invoice status</h3>
+    <div class="hint">Sab invoices — pending kaam ek nazar mein</div>
+    <canvas id="chStatus" height="120"></canvas>
+  </div>
+</div>
+<div class="chartcard" style="margin-bottom:20px">
+  <h3>Top buyers by value</h3>
+  <div class="hint">Lifetime — valid invoices</div>
+  <canvas id="chBuyers" height="70"></canvas>
+</div>
+<script>
+const D = {{ chart|safe }};
+const NAVY='#0A2647', GREEN='#0D9E72', LINE='#E3EAF2', MUTED='#5E7089';
+const STATUS_COLORS = {valid:GREEN, failed:'#C0392B', draft:'#8C9BB0',
+  cancelled:'#B8860B', pending_retry:'#2563eb'};
+Chart.defaults.font.family = "Inter, system-ui, sans-serif";
+Chart.defaults.color = MUTED;
+
+new Chart(document.getElementById('chTrend'), {
+  data: {labels: D.labels, datasets: [
+    {type:'bar', label:'Taxable value', data:D.value, backgroundColor:'rgba(10,38,71,.85)',
+     borderRadius:6, maxBarThickness:38, yAxisID:'y'},
+    {type:'line', label:'Sales tax', data:D.st, borderColor:GREEN, backgroundColor:GREEN,
+     tension:.35, pointRadius:4, pointBackgroundColor:'#fff', pointBorderWidth:2, yAxisID:'y'}]},
+  options: {responsive:true, plugins:{legend:{position:'bottom', labels:{usePointStyle:true, boxWidth:8}}},
+    scales:{y:{beginAtZero:true, grid:{color:LINE}, ticks:{callback:v=>'Rs '+(v>=1e6?(v/1e6)+'M':v>=1e3?(v/1e3)+'K':v)}},
+            x:{grid:{display:false}}}}
+});
+
+new Chart(document.getElementById('chStatus'), {
+  type:'doughnut',
+  data:{labels:D.statusLabels,
+        datasets:[{data:D.statusCounts, borderWidth:2, borderColor:'#fff',
+          backgroundColor:D.statusLabels.map(s=>STATUS_COLORS[s]||'#7c3aed')}]},
+  options:{responsive:true, cutout:'62%',
+    plugins:{legend:{position:'bottom', labels:{usePointStyle:true, boxWidth:8}}}}
+});
+
+new Chart(document.getElementById('chBuyers'), {
+  type:'bar',
+  data:{labels:D.buyerLabels,
+        datasets:[{data:D.buyerValues, backgroundColor:'rgba(13,158,114,.85)',
+          borderRadius:6, maxBarThickness:26}]},
+  options:{indexAxis:'y', responsive:true, plugins:{legend:{display:false}},
+    scales:{x:{beginAtZero:true, grid:{color:LINE},
+      ticks:{callback:v=>'Rs '+(v>=1e6?(v/1e6)+'M':v>=1e3?(v/1e3)+'K':v)}},
+      y:{grid:{display:false}}}}
+});
+</script>
 
 <div class="di-card">
   <h3>Recent activity</h3>

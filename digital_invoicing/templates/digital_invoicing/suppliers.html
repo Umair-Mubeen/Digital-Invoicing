@@ -1,0 +1,35 @@
+{% extends "digital_invoicing/base_di.html" %}
+{% block na_suppliers %}on{% endblock %}
+{% block di_title_text %}Suppliers{% endblock %}
+{% block di_title %}Suppliers{% endblock %}
+{% block di_subtitle %}Supplier book — purchases ke liye{% endblock %}
+{% block di_content %}
+<div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">{% if editing %}Edit{% else %}Add{% endif %} supplier</h3>
+  <form method="post" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
+    {% csrf_token %}
+    {% if editing %}<input type="hidden" name="pk" value="{{ editing.pk }}">{% endif %}
+    <input name="business_name" required placeholder="Business name *" value="{{ editing.business_name|default:'' }}" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+    <input name="ntn_cnic" placeholder="NTN/CNIC" value="{{ editing.ntn_cnic|default:'' }}" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+    <input name="strn" placeholder="STRN" value="{{ editing.strn|default:'' }}" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+    <select name="registration_type" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+      <option {% if editing.registration_type == 'Registered' or not editing %}selected{% endif %}>Registered</option>
+      <option {% if editing.registration_type == 'Unregistered' %}selected{% endif %}>Unregistered</option>
+    </select>
+    <input name="province" placeholder="Province" value="{{ editing.province|default:'Sindh' }}" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+    <input name="address" placeholder="Address" value="{{ editing.address|default:'' }}" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+    <button class="btn-g" type="submit">{% if editing %}Update{% else %}+ Add{% endif %}</button>
+  </form>
+</div>
+<div class="card">
+  <table style="width:100%;border-collapse:collapse">
+    <tr style="text-align:left;color:var(--muted)"><th style="padding:8px 6px">Supplier</th><th>NTN/CNIC</th><th>Reg</th><th>Province</th><th></th></tr>
+    {% for s in items %}
+      <tr style="border-top:1px solid var(--line)">
+        <td style="padding:8px 6px;font-weight:600">{{ s.business_name }}</td>
+        <td>{{ s.ntn_cnic|default:"—" }}</td><td>{{ s.registration_type }}</td><td>{{ s.province }}</td>
+        <td><a href="?edit={{ s.pk }}" style="color:var(--green-d);font-weight:600;text-decoration:none">Edit</a></td></tr>
+    {% empty %}<tr><td colspan="5" style="padding:14px 6px;color:var(--muted)">Koi supplier nahi.</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

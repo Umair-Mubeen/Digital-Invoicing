@@ -8,13 +8,22 @@ app_name = "digital_invoicing"
 
 urlpatterns = [
     path("submit/", views.submit_invoice, name="submit"),
+    path("validate/", views.validate_invoice, name="validate"),
+    path("invoices/<int:pk>/resubmit/", views.resubmit_invoice, name="resubmit"),
+    path("invoices/<int:pk>/cancel/", views.cancel_invoice, name="cancel"),
     path("invoices/", views.invoice_list, name="list"),
     path("invoices/<int:pk>/print/", views.invoice_print, name="print"),
     path("dashboard/", views.dashboard, name="dashboard"),
+    path("reports/", views.reports, name="reports"),
+    path("reports/sales-register.csv", views.sales_register_csv, name="sales_register_csv"),
     path("create/", views.create_invoice, name="create"),
     path("profile/", views.seller_profile, name="profile"),
     path("activity/", views.activity, name="activity"),
     path("buyers/", views.buyers, name="buyers"),
+    path("products/", views.products, name="products"),
+    path("inventory/", views.inventory, name="inventory"),
+    path("suppliers/", views.suppliers, name="suppliers"),
+    path("purchases/", views.purchases, name="purchases"),
     path("atl-upload/", views.atl_upload, name="atl_upload"),
     # Auth (self-service SaaS onboarding)
     path("signup/", views.signup, name="signup"),

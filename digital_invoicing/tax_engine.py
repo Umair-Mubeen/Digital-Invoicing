@@ -94,14 +94,95 @@ def _money(x):
     return Decimal(x).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def compute_item(sale_type, value_excl_st, buyer_unregistered=False, hs_code="", retail_price=0):
+# ---------------------------------------------------------------------------
+# Phase 7 — DB-driven rule resolution (date-effective, cached, safe fallback)
+# Tables khali/unavailable hon to upar wale hardcoded dicts use hote hain —
+# parity guaranteed, deploy risk zero.
+# ---------------------------------------------------------------------------
+_CACHE_TTL = 300  # 5 min — admin change jaldi reflect ho
+
+
+def _cache():
+    from django.core.cache import cache
+    return cache
+
+
+def load_rules(on_date=None):
+    """Return (sale_types_dict, further_rate, exempt_prefixes) for a date.
+    DB first; empty/error -> hardcoded fallback."""
+    from datetime import date as _date
+    on_date = on_date or _date.today()
+    key = f"tax_rules:{on_date.isoformat()}"
+    cached_val = _cache().get(key)
+    if cached_val is not None:
+        return cached_val
+
+    try:
+        from .models import TaxSaleType, FurtherTaxConfig, FurtherTaxExemptHS
+        from django.db.models import Q
+        date_q = (Q(effective_from__lte=on_date) &
+                  (Q(effective_to__isnull=True) | Q(effective_to__gte=on_date)))
+
+        st_rows = (TaxSaleType.objects.filter(date_q, is_active=True)
+                   .order_by("name", "-effective_from"))
+        sale_types = {}
+        for r in st_rows:
+            if r.name in sale_types:      # latest effective_from jeet gaya
+                continue
+            sale_types[r.name] = {
+                "rate": r.rate, "charges_st": r.charges_st,
+                "further": r.further_tax_applies, "sro": r.sro_schedule,
+                "retail_price_based": r.retail_price_based,
+            }
+
+        ft_row = (FurtherTaxConfig.objects.filter(date_q, is_active=True)
+                  .order_by("-effective_from").first())
+        further_rate = ft_row.rate if ft_row else FURTHER_TAX_RATE
+
+        prefixes = set(FurtherTaxExemptHS.objects.filter(date_q, is_active=True)
+                       .values_list("hs_prefix", flat=True))
+
+        if not sale_types:                # tables khali — fallback
+            raise LookupError
+        result = (sale_types, further_rate,
+                  prefixes or FURTHER_TAX_EXEMPT_HS)
+    except Exception:
+        result = (SALE_TYPES, FURTHER_TAX_RATE, FURTHER_TAX_EXEMPT_HS)
+
+    _cache().set(key, result, _CACHE_TTL)
+    return result
+
+
+def get_sale_type_config(sale_type, on_date=None):
+    """Ek sale type ki effective config (services/UI ke liye)."""
+    sale_types, _, _ = load_rules(on_date)
+    return sale_types.get(sale_type)
+
+
+def invalidate_rules_cache():
+    """Admin save ke baad turant reflect karne ke liye (signals se call)."""
+    from datetime import date as _date
+    _cache().delete(f"tax_rules:{_date.today().isoformat()}")
+
+
+def compute_item(sale_type, value_excl_st, buyer_unregistered=False,
+                 hs_code="", retail_price=0, on_date=None):
     """
     Return a dict of computed tax fields for a single line item.
     `value_excl_st` is the taxable value before sales tax.
+    `on_date`: rules is date par effective (default: aaj) — historical
+    recomputation ke liye invoice_date pass karein.
     """
-    cfg = SALE_TYPES.get(sale_type)
+    sale_types, further_rate, exempt_prefixes = load_rules(on_date)
+    cfg = sale_types.get(sale_type)
     if cfg is None:
         raise ValueError(f"Unknown sale type: {sale_type!r}")
+
+    def _ft_exempt(hs):
+        if not hs:
+            return False
+        digits = str(hs).replace(".", "").strip()
+        return any(digits.startswith(p) for p in exempt_prefixes)
 
     value = Decimal(str(value_excl_st or 0))
     # 3rd Schedule: sales tax RETAIL PRICE (MRP) pe lagta hai, sale value pe nahi
@@ -114,19 +195,19 @@ def compute_item(sale_type, value_excl_st, buyer_unregistered=False, hs_code="",
     sales_tax = _money(st_base * cfg["rate"] / 100) if cfg["charges_st"] else _money(0)
 
     further_tax = _money(0)
-    if cfg["further"] and buyer_unregistered and not _further_tax_exempt_hs(hs_code):
-        further_tax = _money(value * FURTHER_TAX_RATE / 100)
+    if cfg["further"] and buyer_unregistered and not _ft_exempt(hs_code):
+        further_tax = _money(value * further_rate / 100)
 
     total = _money(value + sales_tax + further_tax)
 
     return {
-        "rate": f'{cfg["rate"].normalize()}%',
+        "rate": f'{Decimal(cfg["rate"]).normalize()}%',
         "rate_value": cfg["rate"],
         "sales_tax": sales_tax,
         "further_tax": further_tax,
         "sro_schedule": cfg["sro"],
         "retail_price_based": cfg["retail_price_based"],
-        "further_tax_hs_exempt": _further_tax_exempt_hs(hs_code),
+        "further_tax_hs_exempt": _ft_exempt(hs_code),
         "st_base": st_base,
         "total": total,
     }

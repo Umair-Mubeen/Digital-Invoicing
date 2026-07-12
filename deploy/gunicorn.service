@@ -1,0 +1,19 @@
+# /etc/systemd/system/taxbuddy-invoicing.service
+[Unit]
+Description=TaxBuddy Digital Invoicing (gunicorn)
+After=network.target mysql.service
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/srv/taxbuddy-invoicing
+EnvironmentFile=/srv/taxbuddy-invoicing/.env
+ExecStart=/srv/taxbuddy-invoicing/venv/bin/gunicorn \
+    taxbuddy_invoicing.wsgi:application \
+    --bind 127.0.0.1:8001 --workers 3 --timeout 60 \
+    --access-logfile /var/log/taxbuddy/access.log \
+    --error-logfile /var/log/taxbuddy/error.log
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

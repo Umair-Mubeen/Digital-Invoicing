@@ -32,6 +32,7 @@ class Buyer(models.Model):
 
     class Meta:
         ordering = ["-last_used"]
+        indexes = [models.Index(fields=["owner", "ntn_cnic"])]
 
     def __str__(self):
         return f"{self.business_name} ({self.registration_type})"
@@ -39,7 +40,16 @@ class Buyer(models.Model):
 
 class Invoice(models.Model):
     TYPE_CHOICES = [("Sale Invoice", "Sale Invoice"), ("Debit Note", "Debit Note")]
-    STATUS = [("draft", "Draft"), ("valid", "Valid"), ("failed", "Failed")]
+    # Lifecycle per DI User Manual v1.6 (cancellation/edit statuses ke liye
+    # ready — workflow Phase 8 mein aayega, vocabulary abhi se stable).
+    STATUS = [
+        ("draft", "Draft"), ("valid", "Valid"), ("failed", "Failed"),
+        ("pending_retry", "Pending Retry"),
+        ("edited", "Edited"), ("cancelled", "Cancelled"),
+        ("partially_edited", "Partially Edited"),
+        ("partially_cancelled", "Partially Cancelled"),
+        ("partially_edited_cancelled", "Partially Edited & Cancelled"),
+    ]
 
     # owner (multi-tenant: each business account)
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
@@ -79,17 +89,37 @@ class Invoice(models.Model):
     invoice_total = models.DecimalField(max_digits=16, decimal_places=2, default=0)
 
     # FBR result
-    status = models.CharField(max_length=10, choices=STATUS, default="draft")
-    fbr_invoice_number = models.CharField(max_length=60, blank=True)
+    status = models.CharField(max_length=30, choices=STATUS, default="draft")
+    # NULL (not "") jab number nahi mila — MySQL unique index multiple NULLs
+    # allow karta hai lekin multiple "" nahi; is liye null=True + unique=True.
+    fbr_invoice_number = models.CharField(max_length=60, null=True, blank=True,
+                                          unique=True)
     fbr_dated = models.CharField(max_length=30, blank=True)
     fbr_payload = models.JSONField(null=True, blank=True)     # what we sent
     fbr_response = models.JSONField(null=True, blank=True)    # what FBR returned
 
     created_at = models.DateTimeField(auto_now_add=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
+    # Opaque public identifier (URLs/APIs ke liye — int PK enumerable hai)
+    public_id = models.UUIDField(unique=True, null=True, blank=True,
+                                 editable=False, db_index=True)
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["owner", "status"]),
+            models.Index(fields=["owner", "-invoice_date"]),
+            models.Index(fields=["invoice_date"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.public_id is None:
+            import uuid
+            self.public_id = uuid.uuid4()
+        # "" kabhi store na ho — unique constraint NULL pe hi kaam karta hai
+        if self.fbr_invoice_number == "":
+            self.fbr_invoice_number = None
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.fbr_invoice_number or f"Draft #{self.pk}"
@@ -111,9 +141,19 @@ class InvoiceItem(models.Model):
     product_description = models.CharField(max_length=500)
     sale_type = models.CharField(max_length=60)
     uom = models.CharField(max_length=60, default="Numbers, pieces, units")
-    quantity = models.DecimalField(max_digits=14, decimal_places=2, default=1)
+    # PRAL spec: quantity 4 decimal places tak allowed (Error Guide 0302)
+    quantity = models.DecimalField(max_digits=18, decimal_places=4, default=1)
     value_excl_st = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     retail_price = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+
+    # PRAL v1.12 item fields — pehle sirf fbr_payload JSON mein the; ab
+    # queryable (WHT/FED/discount reports ke liye)
+    sales_tax_withheld = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    extra_tax = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    fed_payable = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    discount = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    total_values = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    sro_item_serial_no = models.CharField(max_length=60, blank=True, default="")
 
     # computed
     rate = models.CharField(max_length=10, blank=True)
@@ -138,11 +178,24 @@ class SellerProfile(models.Model):
     province = models.CharField(max_length=30, choices=PROVINCES, default="Sindh")
     address = models.CharField(max_length=500)
     # Per-supplier FBR credentials (SaaS: har business apna token daalta hai)
-    fbr_token = models.CharField(max_length=255, blank=True,
+    # Encrypted at rest (crypto.py) — plaintext kabhi DB mein na jaye.
+    # Read: .fbr_token_plain   Write: .fbr_token = <plaintext> (save encrypts)
+    fbr_token = models.CharField(max_length=512, blank=True,
                                  help_text="PRAL se mila Bearer token (5-saal)")
     use_sandbox = models.BooleanField(default=True,
                                       help_text="ON = sandbox/testing; OFF = production")
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        from .crypto import encrypt
+        if self.fbr_token:
+            self.fbr_token = encrypt(self.fbr_token)
+        super().save(*args, **kwargs)
+
+    @property
+    def fbr_token_plain(self):
+        from .crypto import decrypt
+        return decrypt(self.fbr_token)
 
     def __str__(self):
         return f"{self.business_name} ({self.ntn_cnic})"
@@ -252,3 +305,245 @@ class ATLStatus(models.Model):
 
     def __str__(self):
         return f"{self.reg_no} · {self.period} · {self.status}"
+
+# ---------------------------------------------------------------------------
+# Phase 7 — Configurable Tax Rule Tables
+# Finance Act / budget changes = Django admin mein data change, code untouched.
+# Date-effective: effective_from <= date <= effective_to (NULL = open-ended).
+# ---------------------------------------------------------------------------
+class TaxSaleType(models.Model):
+    """Ek sale type ki ek date-effective configuration row.
+    Naya budget rate = NAYI row (purani ko effective_to se close karein) —
+    historical invoices ki recomputation bhi sahi rahegi."""
+    name = models.CharField(max_length=80)          # exact FBR DI label
+    rate = models.DecimalField(max_digits=6, decimal_places=2)   # %
+    charges_st = models.BooleanField(default=True)
+    further_tax_applies = models.BooleanField(default=False)
+    sro_schedule = models.CharField(max_length=80, blank=True, default="")
+    retail_price_based = models.BooleanField(default=False)
+    fbr_trans_type_id = models.IntegerField(null=True, blank=True)  # ref API 5.5
+    effective_from = models.DateField()
+    effective_to = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    legal_reference = models.CharField(max_length=200, blank=True, default="")
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        indexes = [models.Index(fields=["name", "effective_from"])]
+        ordering = ["name", "-effective_from"]
+
+    def __str__(self):
+        return f"{self.name} @ {self.rate}% (from {self.effective_from})"
+
+
+class FurtherTaxConfig(models.Model):
+    """Section 3(1A) further tax rate — date-effective."""
+    rate = models.DecimalField(max_digits=6, decimal_places=2)   # %
+    effective_from = models.DateField()
+    effective_to = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    legal_reference = models.CharField(max_length=200, blank=True,
+                                       default="Section 3(1A), Sales Tax Act 1990")
+
+    class Meta:
+        ordering = ["-effective_from"]
+
+    def __str__(self):
+        return f"Further Tax {self.rate}% (from {self.effective_from})"
+
+
+class FurtherTaxExemptHS(models.Model):
+    """HS prefixes jin par further tax NAHI (SRO 648(I)/2013 + amendments).
+    Prefix match: '3102' saare fertilizer sub-codes cover karta hai."""
+    hs_prefix = models.CharField(max_length=12)
+    sro_reference = models.CharField(max_length=100, blank=True, default="")
+    description = models.CharField(max_length=200, blank=True, default="")
+    effective_from = models.DateField()
+    effective_to = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["hs_prefix"])]
+        ordering = ["hs_prefix"]
+        verbose_name = "Further-tax exempt HS prefix"
+        verbose_name_plural = "Further-tax exempt HS prefixes"
+
+    def __str__(self):
+        return f"{self.hs_prefix} ({self.sro_reference})"
+
+
+class TaxScenario(models.Model):
+    """PRAL sandbox scenarios SN001–SN028 (Technical Spec v1.12 §9) —
+    onboarding/certification tracking + sale-type mapping."""
+    code = models.CharField(max_length=10, unique=True)   # SN001
+    description = models.CharField(max_length=200)
+    sale_type = models.CharField(max_length=80)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["code"]
+
+    def __str__(self):
+        return f"{self.code} — {self.description}"
+
+
+# ---------------------------------------------------------------------------
+# Phases 9–12 — Products / Inventory / Suppliers / Purchases
+# ---------------------------------------------------------------------------
+class Category(models.Model):
+    owner = models.ForeignKey("auth.User", on_delete=models.CASCADE)
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        unique_together = [("owner", "name")]
+        ordering = ["name"]
+        verbose_name_plural = "Categories"
+
+    def __str__(self):
+        return self.name
+
+
+class Brand(models.Model):
+    owner = models.ForeignKey("auth.User", on_delete=models.CASCADE)
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        unique_together = [("owner", "name")]
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class Product(models.Model):
+    """Product master — SavedItem convenience-cache se aage: SKU, pricing,
+    category/brand, stock tracking flag."""
+    owner = models.ForeignKey("auth.User", on_delete=models.CASCADE)
+    sku = models.CharField(max_length=60, blank=True, default="")
+    name = models.CharField(max_length=200)
+    hs_code = models.CharField(max_length=20, blank=True, default="")
+    sale_type = models.CharField(max_length=80,
+                                 default="Goods at standard rate")
+    uom = models.CharField(max_length=60, default="Numbers, pieces, units")
+    default_price = models.DecimalField(max_digits=16, decimal_places=2,
+                                        default=0)   # excl. ST
+    category = models.ForeignKey(Category, null=True, blank=True,
+                                 on_delete=models.SET_NULL)
+    brand = models.ForeignKey(Brand, null=True, blank=True,
+                              on_delete=models.SET_NULL)
+    track_stock = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+        indexes = [models.Index(fields=["owner", "name"]),
+                   models.Index(fields=["owner", "sku"])]
+
+    def __str__(self):
+        return f"{self.name} ({self.sku})" if self.sku else self.name
+
+    @property
+    def stock(self):
+        from django.db.models import Sum
+        s = self.movements.aggregate(q=Sum("quantity"))["q"]
+        return s or 0
+
+
+class StockMovement(models.Model):
+    """Signed quantity: +in (purchase/adjust), −out (sale/adjust)."""
+    KIND = [("purchase", "Purchase"), ("sale", "Sale"),
+            ("adjustment", "Adjustment")]
+    owner = models.ForeignKey("auth.User", on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE,
+                                related_name="movements")
+    quantity = models.DecimalField(max_digits=18, decimal_places=4)
+    kind = models.CharField(max_length=12, choices=KIND)
+    reference = models.CharField(max_length=120, blank=True, default="")
+    note = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["owner", "product"])]
+
+    def __str__(self):
+        return f"{self.product} {self.quantity:+} ({self.kind})"
+
+
+class Supplier(models.Model):
+    owner = models.ForeignKey("auth.User", on_delete=models.CASCADE)
+    business_name = models.CharField(max_length=200)
+    ntn_cnic = models.CharField(max_length=15, blank=True, default="")
+    strn = models.CharField(max_length=20, blank=True, default="")
+    registration_type = models.CharField(
+        max_length=15, default="Registered",
+        choices=[("Registered", "Registered"),
+                 ("Unregistered", "Unregistered")])
+    province = models.CharField(max_length=40, default="Sindh")
+    address = models.CharField(max_length=300, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["business_name"]
+        indexes = [models.Index(fields=["owner", "ntn_cnic"])]
+
+    def __str__(self):
+        return self.business_name
+
+
+class PurchaseInvoice(models.Model):
+    """Purchase record — INPUT TAX ke liye (return: output − input = payable).
+    Note: FBR DI API par purchases submit NAHI hotin (API sirf seller-side
+    hai) — ye local books hain."""
+    owner = models.ForeignKey("auth.User", on_delete=models.CASCADE)
+    seller_profile = models.ForeignKey("SellerProfile", null=True, blank=True,
+                                       on_delete=models.SET_NULL)
+    supplier = models.ForeignKey(Supplier, null=True, blank=True,
+                                 on_delete=models.SET_NULL)
+    supplier_name = models.CharField(max_length=200)         # snapshot
+    supplier_ntn_cnic = models.CharField(max_length=15, blank=True, default="")
+    supplier_invoice_no = models.CharField(max_length=100, blank=True,
+                                           default="")
+    invoice_date = models.DateField()
+    total_value = models.DecimalField(max_digits=16, decimal_places=2,
+                                      default=0)             # excl. ST
+    total_sales_tax = models.DecimalField(max_digits=16, decimal_places=2,
+                                          default=0)         # input tax
+    invoice_total = models.DecimalField(max_digits=16, decimal_places=2,
+                                        default=0)
+    notes = models.CharField(max_length=300, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    public_id = models.UUIDField(unique=True, null=True, blank=True,
+                                 editable=False)
+
+    class Meta:
+        ordering = ["-invoice_date", "-created_at"]
+        indexes = [models.Index(fields=["owner", "invoice_date"])]
+
+    def save(self, *args, **kwargs):
+        if self.public_id is None:
+            import uuid
+            self.public_id = uuid.uuid4()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"PI {self.supplier_invoice_no or self.pk} — {self.supplier_name}"
+
+
+class PurchaseItem(models.Model):
+    purchase = models.ForeignKey(PurchaseInvoice, on_delete=models.CASCADE,
+                                 related_name="items")
+    product = models.ForeignKey(Product, null=True, blank=True,
+                                on_delete=models.SET_NULL)
+    description = models.CharField(max_length=200)
+    hs_code = models.CharField(max_length=20, blank=True, default="")
+    uom = models.CharField(max_length=60, default="Numbers, pieces, units")
+    quantity = models.DecimalField(max_digits=18, decimal_places=4, default=1)
+    value_excl_st = models.DecimalField(max_digits=16, decimal_places=2,
+                                        default=0)
+    sales_tax = models.DecimalField(max_digits=16, decimal_places=2,
+                                    default=0)    # input tax on line
+
+    def __str__(self):
+        return self.description

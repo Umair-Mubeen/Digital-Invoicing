@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Login — TaxBuddy Digital Invoicing{% endblock %}
+{% block title %}Login — TaxBuddy Umair Digital Invoicing{% endblock %}
 {% block extra_head %}{% include "digital_invoicing/_auth_styles.html" %}{% endblock %}
 {% block content %}
 <div class="auth">
   <div class="brand">
     <div class="mark">TB</div>
-    <div><b>TaxBuddy</b><span>Digital Invoicing</span></div>
+    <div><b>TaxBuddy Umair</b><span>Digital Invoicing</span></div>
   </div>
   <h1>Welcome back</h1>
   <div class="sub">Apne account mein login karein</div>
@@ -14,6 +14,7 @@
 
   <form method="post">
     {% csrf_token %}
+    {% if locked %}<div style="background:#fdecea;color:#c0392b;border:1px solid #f5c6cb;border-radius:8px;padding:10px;margin-bottom:12px;font-weight:600">{{ locked }}</div>{% endif %}
     <input type="hidden" name="next" value="{{ next }}">
     <div class="f"><label>Username</label>
       <input name="username" required autofocus autocomplete="username"></div>
