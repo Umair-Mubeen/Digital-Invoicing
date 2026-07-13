@@ -36,7 +36,7 @@
           <td style="color:var(--muted)">{{ b.province }}</td>
           <td style="white-space:nowrap">
             <a href="?edit={{ b.pk }}" style="color:var(--green-d);font-weight:600;text-decoration:none">✎ Edit</a>
-            <form method="post" style="display:inline" onsubmit="return confirm('Ye business delete karein? Purani invoices safe rahengi.')">
+            <form method="post" style="display:inline" onsubmit="return confirm('Delete this business? Existing invoices stay safe.')">
               {% csrf_token %}<input type="hidden" name="delete_id" value="{{ b.pk }}">
               <button type="submit" style="background:none;border:none;color:var(--danger);font-weight:600;cursor:pointer;font:inherit;margin-left:10px">🗑 Delete</button>
             </form>
@@ -46,7 +46,7 @@
       </tbody>
     </table>
     {% else %}
-      <div class="empty">Abhi koi business nahi — pehla add karo (right side form).</div>
+      <div class="empty">No businesses yet — add your first one (form on the right).</div>
     {% endif %}
   </div>
 
@@ -83,7 +83,7 @@
           {% if editing %}Update Business{% else %}Add Business{% endif %}</button>
         {% if editing %}<a href="{% url 'digital_invoicing:profile' %}" style="display:block;text-align:center;margin-top:10px;color:var(--muted);font-size:12.5px">Cancel edit</a>{% endif %}
       </form>
-      <div class="hint">💡 Jitne suppliers/clients ke liye invoicing karni hai, sab yahan add karo — invoice banate waqt dropdown se select hoga.</div>
+      <div class="hint">💡 Add every business/client you invoice for — you will pick one from the dropdown when creating an invoice.</div>
     </div>
   </div>
 

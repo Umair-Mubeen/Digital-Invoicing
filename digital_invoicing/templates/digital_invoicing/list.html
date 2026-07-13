@@ -2,7 +2,7 @@
 {% block na_list %}on{% endblock %}
 {% block di_title_text %}Invoices{% endblock %}
 {% block di_title %}Invoices{% endblock %}
-{% block di_subtitle %}{{ total }} invoice{{ total|pluralize }} — sirf aapke account ki{% endblock %}
+{% block di_subtitle %}{{ total }} invoice{{ total|pluralize }} — your account only{% endblock %}
 {% block di_actions %}<a class="btn-g" href="{% url 'digital_invoicing:create' %}">+ New Invoice</a>{% endblock %}
 
 {% block di_head %}
@@ -30,7 +30,7 @@
 
 {% block di_content %}
 <form class="filterbar" method="get">
-  <input class="fin grow" name="q" value="{{ q }}" placeholder="🔍 FBR number, buyer name ya NTN…">
+  <input class="fin grow" name="q" value="{{ q }}" placeholder="🔍 FBR number, buyer name or NTN…">
   {% if businesses|length > 1 %}
   <select name="biz" class="fsel">
     <option value="">All businesses</option>
@@ -81,7 +81,7 @@
             <button type="button" onclick="rowAction(this,'{% url 'digital_invoicing:resubmit' inv.pk %}','Resubmit to FBR?')"
               style="margin-left:8px;border:1px solid var(--green-d);color:var(--green-d);background:#fff;border-radius:6px;padding:2px 8px;cursor:pointer;font-weight:600">↻ Resubmit</button>
           {% elif inv.status == 'valid' and not inv.is_locked %}
-            <button type="button" onclick="rowAction(this,'{% url 'digital_invoicing:cancel' inv.pk %}','IRIS par cancel ki hai? System mein bhi Cancelled mark ho jayegi.')"
+            <button type="button" onclick="rowAction(this,'{% url 'digital_invoicing:cancel' inv.pk %}','Cancelled on IRIS? This will mark it Cancelled in the system too.')"
               style="margin-left:8px;border:1px solid #c0392b;color:#c0392b;background:#fff;border-radius:6px;padding:2px 8px;cursor:pointer;font-weight:600">✕ Cancel</button>
           {% endif %}
         </td>
@@ -100,12 +100,12 @@
   <div class="empty-cta">
     <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 2h6a2 2 0 0 1 2 2v16l-5-3-5 3V4a2 2 0 0 1 2-2z"/></svg></div>
     {% if q or status %}
-      <b>Kuch nahi mila</b>
+      <b>Nothing found</b>
       <p>Search ya filter badal ke dekho.</p>
       <a class="btn-g" href="{% url 'digital_invoicing:list' %}">Clear filters</a>
     {% else %}
-      <b>Abhi koi invoice nahi</b>
-      <p>Pehli FBR invoice banao — 1 minute ka kaam.</p>
+      <b>No invoices yet</b>
+      <p>Create your first FBR invoice — takes a minute.</p>
       <a class="btn-g" href="{% url 'digital_invoicing:create' %}">+ Create your first invoice</a>
     {% endif %}
   </div>

@@ -2,7 +2,7 @@
 {% block na_purchases %}on{% endblock %}
 {% block di_title_text %}Purchases{% endblock %}
 {% block di_title %}Purchases{% endblock %}
-{% block di_subtitle %}Input tax records — FBR par submit nahi hote (local books){% endblock %}
+{% block di_subtitle %}Input tax records — not submitted to FBR (local books){% endblock %}
 {% block di_content %}
 <div class="card" style="margin-bottom:20px">
   <h3 style="margin-top:0">New purchase invoice</h3>
@@ -28,7 +28,7 @@
   </div>
 </div>
 <form class="filterbar" method="get">
-  <input class="fin grow" name="q" value="{{ q }}" placeholder="🔍 Supplier name, NTN ya invoice #…">
+  <input class="fin grow" name="q" value="{{ q }}" placeholder="🔍 Supplier name, NTN or invoice #…">
   <input class="fin" type="date" name="from" value="{{ date_from }}" title="From">
   <input class="fin" type="date" name="to" value="{{ date_to }}" title="To">
   <button class="fbtn" type="submit">Filter</button>
@@ -47,7 +47,7 @@
         <td class="num">Rs {{ p.total_value|floatformat:0 }}</td>
         <td class="num">Rs {{ p.total_sales_tax|floatformat:0 }}</td>
         <td class="num" style="font-weight:600">Rs {{ p.invoice_total|floatformat:0 }}</td></tr>
-    {% empty %}<tr><td colspan="6" style="padding:14px 6px;color:var(--muted)">Koi purchase nahi.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="6" style="padding:14px 6px;color:var(--muted)">No purchases yet.</td></tr>{% endfor %}
   </table>
 </div>
 <script>

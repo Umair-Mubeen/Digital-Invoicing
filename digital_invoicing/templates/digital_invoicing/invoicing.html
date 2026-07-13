@@ -150,7 +150,7 @@
         <div>
           <div class="sub-h">Seller / Business <a href="{% url 'digital_invoicing:profile' %}" style="font-weight:600;color:var(--green-d);text-transform:none;font-size:11px">+ manage</a></div>
           <div class="grid" style="gap:11px">
-            <div class="field"><label>Business {% if businesses|length > 1 %}select karo{% endif %} <span class="req">*</span></label>
+            <div class="field"><label>Business {% if businesses|length > 1 %}(select one){% endif %} <span class="req">*</span></label>
               {% if businesses|length > 1 %}
               <select id="sellerProfileId" onchange="fillSeller()">
                 {% for b in businesses %}
@@ -191,7 +191,7 @@
         </div>
       </div>
       <div id="furtherTaxNote" class="engine hide">
-        <div><b>⚠ Buyer Unregistered hai</b> — further tax @ 4% (Sec 3(1A)) standard-rate items pe auto-add hoga. 3rd Schedule/exempt pe nahi.</div>
+        <div><b>⚠ Buyer is Unregistered</b> — further tax @ 4% (Sec 3(1A)) is auto-added on standard-rate items. Not on 3rd Schedule/exempt.</div>
       </div>
     </div>
   </div>
@@ -528,7 +528,7 @@ async function verifyBuyer(){
     recalc();
     badge.textContent=`✓ ${type} · STATL ${statl}`;
     badge.className = statl==='Active' ? 'badge-ok' : 'badge-warn';
-  }catch(e){ badge.textContent='✗ verify nahi hua'; badge.className='badge-err'; }
+  }catch(e){ badge.textContent='✗ could not verify'; badge.className='badge-err'; }
 }
 document.getElementById('buyerNTNCNIC').addEventListener('blur', verifyBuyer);
 
@@ -561,17 +561,17 @@ function buildPayload(){
 }
 
 async function submitInvoice(btn){
-  if(!items.length){ toast("Pehle ek item add karein.","warn"); return; }
+  if(!items.length){ toast("Add at least one item first.","warn"); return; }
   // 3rd Schedule items pe Retail Price (MRP) zaroori hai
   const missingMRP = items.find(it => SALE_TYPES[it.saleType].retail && !((+it.mrp)>0));
   if(missingMRP){
-    toast("3rd Schedule item pe Retail Price (MRP) zaroori hai.","warn");
+    toast("Retail Price (MRP) is required for 3rd Schedule items.","warn");
     return;
   }
   const payload = buildPayload();
   const label = btn.innerHTML;
   btn.disabled=true;
-  btn.innerHTML='<span class="spin"></span> FBR ko bhej rahe hain…';
+  btn.innerHTML='<span class="spin"></span> Sending to FBR…';
   let data;
   try{
     const resp = await fetch(BACKEND_SUBMIT_URL,{
@@ -582,7 +582,7 @@ async function submitInvoice(btn){
     data = await resp.json();
   }catch(e){
     btn.disabled=false; btn.innerHTML=label;
-    toast("Server se connect nahi ho paya: "+e.message,"err"); return;
+    toast("Could not connect to server: "+e.message,"err"); return;
   }
   btn.disabled=false; btn.innerHTML=label;
   if(data.ok){ showSuccess(data); items=[]; addRow(); }
@@ -619,9 +619,9 @@ function atlUploadBlock(){
   return `
     <div id="atlBox" style="background:#fdf9ee;border:1px solid #f0e0b8;border-radius:12px;padding:12px 14px;margin-bottom:12px">
       <div style="font-weight:700;color:#8a6d1a;font-size:13px;margin-bottom:4px">
-        📄 Buyer ka ATL status PDF (${period})</div>
+        📄 Buyer ATL status PDF (${period})</div>
       <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">
-        FBR/IRIS se is buyer ki ATL PDF download kar ke yahin attach karein — further tax ka proof.</div>
+        Download this buyer's ATL PDF from FBR/IRIS and attach it here — proof for further tax.</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <input type="file" id="atlFile" accept="application/pdf" style="font-size:12px;flex:1;min-width:180px">
         <button type="button" class="btn btn-green" style="padding:8px 16px"
@@ -631,7 +631,7 @@ function atlUploadBlock(){
 }
 async function uploadBuyerATL(btn, reg, period){
   const inp = document.getElementById('atlFile');
-  if(!inp.files.length){ alert('Pehle PDF select karein'); return; }
+  if(!inp.files.length){ alert('Select a PDF first'); return; }
   btn.disabled=true; btn.textContent='Saving…';
   const fd = new FormData();
   fd.append('reg_no', reg); fd.append('period', period);
@@ -644,7 +644,7 @@ async function uploadBuyerATL(btn, reg, period){
     const col = d.status==='Active' ? 'var(--green-d)' : '#c0392b';
     box.innerHTML = '<div style="font-weight:700;font-size:13px;color:'+col+'">'
       + (d.status==='Active'?'✓':'✗') + ' PDF saved — status: ' + d.status
-      + (d.verified ? ' <span style="color:var(--green-d)">(PDF se verified — NTN matched)</span>'
+      + (d.verified ? ' <span style="color:var(--green-d)">(verified from PDF — NTN matched)</span>'
                     : ' <span style="color:#b8860b">(manually confirmed)</span>')
       + '</div>';
   } else if(d.needs_status){
@@ -653,15 +653,15 @@ async function uploadBuyerATL(btn, reg, period){
     div.className = 'atlmanual';
     div.style.cssText = 'margin-top:8px;font-size:12.5px';
     div.innerHTML = '<span style="color:#b8860b;font-weight:600">'+d.error+'</span><br>'
-      + '<button type="button" class="btn btn-green" style="padding:6px 14px;margin-top:6px" onclick="manualATL(this,\''+reg+'\',\''+period+'\',\'Active\')">Active tha</button> '
-      + '<button type="button" class="btn" style="padding:6px 14px;margin-top:6px;border:1px solid #c0392b;color:#c0392b;background:#fff;border-radius:8px;cursor:pointer" onclick="manualATL(this,\''+reg+'\',\''+period+'\',\'Inactive\')">In-Active tha</button>';
+      + '<button type="button" class="btn btn-green" style="padding:6px 14px;margin-top:6px" onclick="manualATL(this,\''+reg+'\',\''+period+'\',\'Active\')">Was Active</button> '
+      + '<button type="button" class="btn" style="padding:6px 14px;margin-top:6px;border:1px solid #c0392b;color:#c0392b;background:#fff;border-radius:8px;cursor:pointer" onclick="manualATL(this,\''+reg+'\',\''+period+'\',\'Inactive\')">In-Was Active</button>';
     box.appendChild(div);
     btn.disabled=false; btn.textContent='⬆ Save ATL PDF';
   } else { alert(d.error||'Upload failed'); btn.disabled=false; btn.textContent='⬆ Save ATL PDF'; }
 }
 async function manualATL(btn, reg, period, status){
   const inp = document.getElementById('atlFile');
-  if(!inp.files.length){ alert('PDF select rahe'); return; }
+  if(!inp.files.length){ alert('Keep the PDF selected'); return; }
   btn.disabled=true;
   const fd = new FormData();
   fd.append('reg_no', reg); fd.append('period', period);
@@ -725,7 +725,7 @@ async function validateInvoice(btn){
       headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')},
       body: JSON.stringify(p)});
     const d = await r.json();
-    if(d.ok){ alert('✓ FBR validation PASSED — invoice submit karne ke liye tayyar hai.'); }
+    if(d.ok){ alert('✓ FBR validation PASSED — invoice is ready to submit.'); }
     else{
       const errs=((d.validationResponse&&d.validationResponse.invoiceStatuses)||[])
         .filter(s=>s.errorCode).map(s=>s.errorCode+': '+s.error).join('\n');

@@ -2,7 +2,7 @@
 {% block na_reports %}on{% endblock %}
 {% block di_title_text %}Reports{% endblock %}
 {% block di_title %}Tax Reports{% endblock %}
-{% block di_subtitle %}Return-filing ready — sirf VALID invoices tax summary mein{% endblock %}
+{% block di_subtitle %}Return-filing ready — only VALID invoices count in the tax summary{% endblock %}
 
 {% block di_head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
@@ -74,7 +74,7 @@ new Chart(document.getElementById('chTax'), {
         <td class="num">Rs {{ r.st|floatformat:0 }}</td>
         <td class="num">Rs {{ r.ft|floatformat:0 }}</td></tr>
     {% empty %}
-      <tr><td colspan="5" style="padding:14px 6px;color:var(--muted)">Is period mein koi valid invoice nahi.</td></tr>
+      <tr><td colspan="5" style="padding:14px 6px;color:var(--muted)">No valid invoices in this period.</td></tr>
     {% endfor %}
   </table>
 </div>
@@ -94,7 +94,7 @@ new Chart(document.getElementById('chTax'), {
         <td class="num">Rs {{ b.st|floatformat:0 }}</td>
         <td class="num">Rs {{ b.ft|floatformat:0 }}</td></tr>
     {% empty %}
-      <tr><td colspan="7" style="padding:14px 6px;color:var(--muted)">Koi data nahi.</td></tr>
+      <tr><td colspan="7" style="padding:14px 6px;color:var(--muted)">No data.</td></tr>
     {% endfor %}
   </table>
 </div>
@@ -110,7 +110,7 @@ new Chart(document.getElementById('chTax'), {
         <td>{{ r.n }}</td>
         <td class="num">Rs {{ r.value|floatformat:0 }}</td></tr>
     {% empty %}
-      <tr><td colspan="3" style="padding:14px 6px;color:var(--muted)">Koi data nahi.</td></tr>
+      <tr><td colspan="3" style="padding:14px 6px;color:var(--muted)">No data.</td></tr>
     {% endfor %}
   </table>
 </div>

@@ -444,8 +444,8 @@ def login_view(request):
     if request.method == "POST":
         key = _login_throttle_key(request)
         if cache.get(key, 0) >= LOGIN_MAX_FAILS:
-            locked_msg = ("Bohat zyada ghalat koshishein — 10 minute baad "
-                          "dobara try karein.")
+            locked_msg = ("Too many failed attempts — try again "
+                          "after 10 minutes.")
             log_event(request, "login_locked",
                       username=request.POST.get("username", ""))
             form = AuthenticationForm(request)
@@ -946,12 +946,12 @@ def atl_evidence_upload(request):
     period = (request.POST.get("period") or "").strip()
     f = request.FILES.get("file")
     if not (reg_no and period and f):
-        return JsonResponse({"ok": False, "error": "Reg no, period aur PDF file zaroori hai"}, status=400)
+        return JsonResponse({"ok": False, "error": "Reg no, period and PDF file are required"}, status=400)
     if f.size > 5 * 1024 * 1024:
-        return JsonResponse({"ok": False, "error": "PDF 5MB se bari hai"}, status=400)
+        return JsonResponse({"ok": False, "error": "PDF is larger than 5MB"}, status=400)
     head = f.read(5); f.seek(0)
     if not (f.name.lower().endswith(".pdf") and head.startswith(b"%PDF")):
-        return JsonResponse({"ok": False, "error": "Sirf PDF file allowed hai"}, status=400)
+        return JsonResponse({"ok": False, "error": "Only PDF files are allowed"}, status=400)
     # ---- PDF ka content parho: NTN match + status extract ----
     def _pdf_text(fobj):
         try:
@@ -978,9 +978,9 @@ def atl_evidence_upload(request):
         if reg_digits and reg_digits not in norm.replace(".", ""):
             return JsonResponse({
                 "ok": False,
-                "error": (f"Is PDF mein reg no {reg_no} nahi mila — "
-                          "lagta hai kisi aur party ki file hai. Sahi PDF "
-                          "lagayein.")}, status=400)
+                "error": (f"Reg no {reg_no} was not found in this PDF — "
+                          "this appears to be another party's file. Please attach "
+                          "the correct PDF.")}, status=400)
         if "inactive" in norm:
             detected, verified = "Inactive", True
         elif "active" in norm:
@@ -993,8 +993,8 @@ def atl_evidence_upload(request):
         else:
             return JsonResponse({
                 "ok": False, "needs_status": True,
-                "error": ("PDF se status read nahi ho saka (scanned/ghair-"
-                          "standard file). Neeche status khud select karein.")},
+                "error": ("Could not read status from the PDF (scanned/non-"
+                          "standard file). Please select the status manually below.")},
                 status=400)
 
     rec, _ = ATLStatus.objects.get_or_create(

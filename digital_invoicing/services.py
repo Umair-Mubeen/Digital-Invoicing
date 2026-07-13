@@ -62,7 +62,7 @@ class SellerResolutionService:
             user=user, pk=payload.get("sellerProfileId")).first() \
             or SellerProfile.objects.filter(user=user).first()
         if not profile:
-            raise SubmissionError("Pehle Business add karein", simple=True)
+            raise SubmissionError("Please add a Business first", simple=True)
         payload["sellerNTNCNIC"] = profile.ntn_cnic
         payload["sellerBusinessName"] = profile.business_name
         payload["sellerProvince"] = profile.province
@@ -129,7 +129,7 @@ class TaxCalculationService:
             if (get_sale_type_config(st) or {}).get("retail_price_based") and not (
                     float(it.get("fixedNotifiedValueOrRetailPrice", 0) or 0) > 0):
                 raise SubmissionError(
-                    "3rd Schedule item pe Retail Price (MRP) zaroori hai",
+                    "Retail Price (MRP) is required for 3rd Schedule items",
                     simple=True)
 
     @staticmethod
@@ -407,12 +407,12 @@ class InvoiceResubmissionService:
     def resubmit(self, invoice_pk):
         inv = Invoice.objects.filter(owner=self.user, pk=invoice_pk).first()
         if not inv:
-            raise SubmissionError("Invoice nahi mili", simple=True)
+            raise SubmissionError("Invoice not found", simple=True)
         if inv.status != "failed":
             raise SubmissionError(
-                "Sirf failed invoice resubmit ho sakti hai", simple=True)
+                "Only failed invoices can be resubmitted", simple=True)
         if not inv.fbr_payload:
-            raise SubmissionError("Original payload mehfooz nahi", simple=True)
+            raise SubmissionError("Original payload was not saved", simple=True)
 
         profile = inv.seller_profile or SellerProfile.objects.filter(
             user=self.user).first()
@@ -455,14 +455,14 @@ class InvoiceCancellationService:
     def mark_cancelled(self, invoice_pk, remarks=""):
         inv = Invoice.objects.filter(owner=self.user, pk=invoice_pk).first()
         if not inv:
-            raise SubmissionError("Invoice nahi mili", simple=True)
+            raise SubmissionError("Invoice not found", simple=True)
         if inv.status != "valid":
             raise SubmissionError(
-                "Sirf valid invoice cancel mark ho sakti hai", simple=True)
+                "Only valid invoices can be marked cancelled", simple=True)
         if inv.is_locked:
             raise SubmissionError(
-                "72-hour window guzar chuki — IRIS par bhi ab cancellation "
-                "allowed nahi (Manual v1.6)", simple=True)
+                "72-hour window has passed — cancellation is no longer "
+                "allowed on IRIS either (Manual v1.6)", simple=True)
         inv.status = "cancelled"
         inv.reason_remarks = (remarks or inv.reason_remarks or
                               "Cancelled on IRIS portal")
@@ -588,11 +588,11 @@ class PurchaseService:
     def create(self, data, items):
         from .models import PurchaseInvoice, PurchaseItem, Supplier, Product
         if not items:
-            raise SubmissionError("Kam az kam ek item add karein", simple=True)
+            raise SubmissionError("Add at least one item", simple=True)
         try:
             datetime.strptime(data.get("invoice_date", ""), "%Y-%m-%d")
         except (ValueError, TypeError):
-            raise SubmissionError("Date format YYYY-MM-DD chahiye", simple=True)
+            raise SubmissionError("Date must be in YYYY-MM-DD format", simple=True)
 
         tv = tst = Decimal("0")
         clean = []
@@ -600,12 +600,12 @@ class PurchaseService:
             v = Decimal(str(it.get("value_excl_st", 0) or 0))
             st = Decimal(str(it.get("sales_tax", 0) or 0))
             if v < 0 or st < 0:
-                raise SubmissionError("Negative values allowed nahi", simple=True)
+                raise SubmissionError("Negative values are not allowed", simple=True)
             tv += v; tst += st
             clean.append(it)
 
         if not (data.get("supplier_name") or "").strip() and not data.get("supplier_id"):
-            raise SubmissionError("Supplier ka naam lazmi hai", simple=True)
+            raise SubmissionError("Supplier name is required", simple=True)
         supplier = None
         if data.get("supplier_id"):
             supplier = Supplier.objects.filter(
@@ -741,7 +741,7 @@ class ATLReportService:
         from .models import ATLStatus
         reg_no = (reg_no or "").strip()
         if not reg_no:
-            raise SubmissionError("Reg no khali hai", simple=True)
+            raise SubmissionError("Registration number is empty", simple=True)
         y, m = self._ym(period)
         result = get_reference_client().statl_check(
             reg_no, date=f"{y:04d}-{m:02d}-01")

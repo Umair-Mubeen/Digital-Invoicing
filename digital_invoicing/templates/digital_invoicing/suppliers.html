@@ -2,7 +2,7 @@
 {% block na_suppliers %}on{% endblock %}
 {% block di_title_text %}Suppliers{% endblock %}
 {% block di_title %}Suppliers{% endblock %}
-{% block di_subtitle %}Supplier book — purchases ke liye{% endblock %}
+{% block di_subtitle %}Supplier book — for purchases{% endblock %}
 {% block di_content %}
 <div class="card" style="margin-bottom:20px">
   <h3 style="margin-top:0">{% if editing %}Edit{% else %}Add{% endif %} supplier</h3>
@@ -29,7 +29,7 @@
         <td style="padding:8px 6px;font-weight:600">{{ s.business_name }}</td>
         <td>{{ s.ntn_cnic|default:"—" }}</td><td>{{ s.registration_type }}</td><td>{{ s.province }}</td>
         <td><a href="?edit={{ s.pk }}" style="color:var(--green-d);font-weight:600;text-decoration:none">Edit</a></td></tr>
-    {% empty %}<tr><td colspan="5" style="padding:14px 6px;color:var(--muted)">Koi supplier nahi.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="5" style="padding:14px 6px;color:var(--muted)">No suppliers yet.</td></tr>{% endfor %}
   </table>
 </div>
 {% endblock %}

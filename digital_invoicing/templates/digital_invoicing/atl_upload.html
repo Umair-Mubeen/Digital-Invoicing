@@ -2,7 +2,7 @@
 {% block na_buyers %}on{% endblock %}
 {% block di_title_text %}ATL Upload{% endblock %}
 {% block di_title %}Sales Tax ATL Upload{% endblock %}
-{% block di_subtitle %}FBR Active Taxpayer List — mahina-wise status{% endblock %}
+{% block di_subtitle %}FBR Active Taxpayer List — month-wise status{% endblock %}
 {% block di_actions %}<a class="btn-g" style="background:var(--navy)" href="{% url 'digital_invoicing:buyers' %}">← Buyers</a>{% endblock %}
 
 {% block di_head %}
@@ -23,10 +23,10 @@
 {% block di_content %}
 <div style="background:var(--green-soft,#e7f9f1);border:1px solid #bfe8d8;border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
   <div style="flex:1;min-width:220px">
-    <b style="color:var(--green-d,#0b7d5c)">Naya tareeqa:</b>
-    <span style="color:var(--ink,#22314a);font-size:13.5px"> har buyer/supplier ki FBR ATL PDF month-wise upload karein — CSV ki zaroorat nahi.</span>
+    <b style="color:var(--green-d,#0b7d5c)">New method:</b>
+    <span style="color:var(--ink,#22314a);font-size:13.5px"> upload each buyer/supplier's FBR ATL PDF month-wise — no CSV needed.</span>
   </div>
-  <a class="btn-g" href="{% url 'digital_invoicing:atl_report' %}">→ ATL Monthly kholen</a>
+  <a class="btn-g" href="{% url 'digital_invoicing:atl_report' %}">→ Open ATL Monthly</a>
 </div>
 
 <div class="di-card up-card">
@@ -36,22 +36,22 @@
     <form method="post" enctype="multipart/form-data">
       {% csrf_token %}
       <div class="field">
-        <label>Period (jis mahine ki ATL)</label>
+        <label>Period (ATL month)</label>
         <input name="period" value="{{ period }}" placeholder="2026-07">
       </div>
       <div class="field">
         <label>ATL CSV file</label>
         <div class="drop">
-          📄 FBR ki Sales Tax ATL CSV select karein
+          📄 Select FBR Sales Tax ATL CSV
           <br><input type="file" name="atl_file" accept=".csv" required>
         </div>
       </div>
       <button type="submit" class="btn-g" style="width:100%;padding:11px;font-weight:700">⬆ Import ATL</button>
     </form>
     <div class="info">
-      <b>CSV format (flexible):</b> headers mein <code>reg_no</code> (ya ntn/strn/cnic) aur <code>status</code> (Active/Inactive) hone chahiye. <code>period</code> column optional — na ho to upar wala period use hoga.<br>
-      Misaal: <code>reg_no,status</code> → <code>1234567,Active</code><br>
-      FBR ATL download: portal se Sales Tax ATL nikaal ke, ya apni list bana ke.
+      <b>CSV format (flexible):</b> headers must include <code>reg_no</code> (or ntn/strn/cnic) and <code>status</code> (Active/Inactive). <code>period</code> column is optional — the period above is used if absent.<br>
+      Example: <code>reg_no,status</code> → <code>1234567,Active</code><br>
+      Get the ATL from the FBR portal, or build your own list.
     </div>
   </div>
 </div>

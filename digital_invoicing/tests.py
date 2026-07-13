@@ -1030,7 +1030,7 @@ class ATLPDFParsingTests(TestCase):
         pdf = self._real_pdf("Registration No: 9999999\nStatus: Active")
         r = self._upload(pdf, reg="7654321")
         self.assertEqual(r.status_code, 400)
-        self.assertIn("nahi mila", r.json()["error"])
+        self.assertIn("was not found", r.json()["error"])
 
     def test_unreadable_pdf_needs_manual_then_saves(self):
         from .models import ATLStatus

@@ -8,7 +8,7 @@
     <div><b>TaxBuddy Umair</b><span>Digital Invoicing</span></div>
   </div>
   <h1>Create your account</h1>
-  <div class="sub">FBR digital invoicing — minto mein shuru karein</div>
+  <div class="sub">FBR digital invoicing — get started in minutes</div>
 
   {% if form.errors %}
     <div class="err">
@@ -29,6 +29,6 @@
       <input type="password" name="password2" required></div>
     <button class="bsub" type="submit">Create Account</button>
   </form>
-  <div class="alt">Pehle se account hai? <a href="{% url 'digital_invoicing:login' %}">Login karein</a></div>
+  <div class="alt">Already have an account? <a href="{% url 'digital_invoicing:login' %}">Log in</a></div>
 </div>
 {% endblock %}

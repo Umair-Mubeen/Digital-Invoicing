@@ -8,9 +8,9 @@
     <div><b>TaxBuddy Umair</b><span>Digital Invoicing</span></div>
   </div>
   <h1>Welcome back</h1>
-  <div class="sub">Apne account mein login karein</div>
+  <div class="sub">Log in to your account</div>
 
-  {% if form.errors %}<div class="err">Username ya password ghalat hai — dobara koshish karein.</div>{% endif %}
+  {% if form.errors %}<div class="err">Incorrect username or password — please try again.</div>{% endif %}
 
   <form method="post">
     {% csrf_token %}
@@ -22,6 +22,6 @@
       <input type="password" name="password" required autocomplete="current-password"></div>
     <button class="bsub" type="submit">Login</button>
   </form>
-  <div class="alt">Account nahi hai? <a href="{% url 'digital_invoicing:signup' %}">Sign up karein</a></div>
+  <div class="alt">Don't have an account? <a href="{% url 'digital_invoicing:signup' %}">Sign up</a></div>
 </div>
 {% endblock %}

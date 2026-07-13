@@ -25,7 +25,7 @@
 {% block di_content %}
 {% if saved %}<div class="savedmsg">✓ Buyer saved</div>{% endif %}
 <form class="filterbar" method="get">
-  <input class="fin grow" name="q" value="{{ q }}" placeholder="🔍 Buyer name ya NTN/CNIC…">
+  <input class="fin grow" name="q" value="{{ q }}" placeholder="🔍 Buyer name or NTN/CNIC…">
   <select name="reg" class="fsel">
     <option value="">All types</option>
     <option {% if reg == 'Registered' %}selected{% endif %}>Registered</option>
@@ -55,7 +55,7 @@
           </td>
           <td style="white-space:nowrap">
             <a href="?edit={{ x.b.pk }}" style="color:var(--green-d);font-weight:600;text-decoration:none">✎</a>
-            <form method="post" style="display:inline" onsubmit="return confirm('Buyer delete karein?')">
+            <form method="post" style="display:inline" onsubmit="return confirm('Delete this buyer?')">
               {% csrf_token %}<input type="hidden" name="delete_id" value="{{ x.b.pk }}">
               <button type="submit" style="background:none;border:none;color:var(--danger);cursor:pointer;font:inherit;font-weight:600;margin-left:8px">🗑</button>
             </form>
@@ -65,7 +65,7 @@
       </tbody>
     </table>
     {% else %}
-      <div class="empty">Abhi koi buyer nahi. Invoice banane pe khud save hote hain, ya yahan add karo →</div>
+      <div class="empty">No buyers yet. They are saved automatically when you create invoices, or add one here →</div>
     {% endif %}
   </div>
 

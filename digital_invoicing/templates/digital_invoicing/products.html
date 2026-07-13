@@ -29,7 +29,7 @@
   </form>
 </div>
 <form class="filterbar" method="get">
-  <input class="fin grow" name="q" value="{{ q }}" placeholder="🔍 Name, SKU ya HS code…">
+  <input class="fin grow" name="q" value="{{ q }}" placeholder="🔍 Name, SKU or HS code…">
   <select name="cat" class="fsel">
     <option value="">All categories</option>
     {% for c in categories %}<option value="{{ c.pk }}" {% if cat == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
@@ -53,7 +53,7 @@
         <td class="num">{% if p.track_stock %}{{ p.stock|floatformat:"-2" }}{% else %}—{% endif %}</td>
         <td><a href="?edit={{ p.pk }}" style="color:var(--green-d);font-weight:600;text-decoration:none">Edit</a></td>
       </tr>
-    {% empty %}<tr><td colspan="7" style="padding:14px 6px;color:var(--muted)">Abhi koi product nahi — upar se add karein.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="7" style="padding:14px 6px;color:var(--muted)">No products yet — add one above.</td></tr>{% endfor %}
   </table>
 </div>
 {% endblock %}

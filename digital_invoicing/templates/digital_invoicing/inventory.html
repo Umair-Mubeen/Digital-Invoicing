@@ -2,7 +2,7 @@
 {% block na_inventory %}on{% endblock %}
 {% block di_title_text %}Inventory{% endblock %}
 {% block di_title %}Inventory{% endblock %}
-{% block di_subtitle %}Stock levels — sale par auto-out, purchase par auto-in{% endblock %}
+{% block di_subtitle %}Stock levels — auto stock-out on sales, auto stock-in on purchases{% endblock %}
 {% block di_content %}
 <div class="card" style="margin-bottom:20px">
   <h3 style="margin-top:0">Manual adjustment (+ in / − out)</h3>
@@ -23,7 +23,7 @@
     {% for p in products %}
       <tr style="border-top:1px solid var(--line)"><td style="padding:8px 6px">{{ p.name }}</td>
         <td class="num" style="font-weight:600;{% if p.stock < 0 %}color:#c0392b{% endif %}">{{ p.stock|floatformat:"-2" }}</td></tr>
-    {% empty %}<tr><td colspan="2" style="padding:14px 6px;color:var(--muted)">Stock-tracked products nahi — Products page se add karein.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="2" style="padding:14px 6px;color:var(--muted)">No stock-tracked products — add them on the Products page.</td></tr>{% endfor %}
   </table>
 </div>
 <div class="card">
@@ -36,7 +36,7 @@
         <td>{{ m.product.name }}</td>
         <td class="num" style="font-weight:600;{% if m.quantity < 0 %}color:#c0392b{% else %}color:var(--green-d){% endif %}">{{ m.quantity|floatformat:"-2" }}</td>
         <td>{{ m.get_kind_display }}</td><td>{{ m.reference }} {{ m.note }}</td></tr>
-    {% empty %}<tr><td colspan="5" style="padding:14px 6px;color:var(--muted)">Koi movement nahi.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="5" style="padding:14px 6px;color:var(--muted)">No movements yet.</td></tr>{% endfor %}
   </table>
 </div>
 {% endblock %}

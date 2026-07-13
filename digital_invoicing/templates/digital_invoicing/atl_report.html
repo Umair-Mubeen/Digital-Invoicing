@@ -2,7 +2,7 @@
 {% block na_atl %}on{% endblock %}
 {% block di_title_text %}ATL Monthly{% endblock %}
 {% block di_title %}ATL Monthly Evidence{% endblock %}
-{% block di_subtitle %}Har mahine ke buyers + suppliers ka STATL status — audit proof{% endblock %}
+{% block di_subtitle %}Monthly STATL status of all buyers + suppliers — audit proof{% endblock %}
 {% block di_actions %}
 <a class="btn-g" style="background:var(--navy)" href="{% url 'digital_invoicing:atl_report_pdf' %}?period={{ period }}">⬇ Save PDF — {{ period }}</a>
 {% endblock %}
@@ -40,13 +40,13 @@
             <span class="pill" style="background:#fdf3e3;color:#b8860b">NTN missing</span>
             <a href="{% if r.party_type == 'Buyer' %}{% url 'digital_invoicing:buyers' %}{% else %}{% url 'digital_invoicing:suppliers' %}{% endif %}"
                style="margin-left:6px;color:var(--navy);font-weight:600;font-size:12px;text-decoration:none">
-               NTN add karein →</a>
+               Add NTN →</a>
           {% endif %}
           {% if r.pdf_pk %}
             <a href="{% url 'digital_invoicing:atl_evidence_view' r.pdf_pk %}" target="_blank"
                style="color:var(--green-d);font-weight:600;text-decoration:none">📄 View</a>
-            {% if r.verified %}<span title="Status PDF ke text se verified — NTN matched" style="color:var(--green-d);font-size:11px;font-weight:700">✓v</span>
-            {% else %}<span title="Manually confirmed — PDF se read nahi hua" style="color:#b8860b;font-size:11px;font-weight:700">m</span>{% endif %}
+            {% if r.verified %}<span title="Status verified from PDF text — NTN matched" style="color:var(--green-d);font-size:11px;font-weight:700">✓v</span>
+            {% else %}<span title="Manually confirmed — could not read from PDF" style="color:#b8860b;font-size:11px;font-weight:700">m</span>{% endif %}
           {% else %}<span style="color:var(--muted)">—</span>{% endif %}
           {% if r.reg_no %}
             <button type="button" onclick="pickPdf(this,'{{ r.reg_no }}')"
@@ -65,18 +65,18 @@
       </tr>
     {% empty %}
       <tr><td colspan="8" style="padding:16px 6px;color:var(--muted)">
-        Is month mein koi valid sale ya purchase nahi — pehle invoices/purchases banayein.</td></tr>
+        No valid sales or purchases in this month — create invoices/purchases first.</td></tr>
     {% endfor %}
   </table>
 </div>
 
 <div class="card" style="margin-top:16px">
-  <h3 style="margin-top:0">Kaise use karein</h3>
+  <h3 style="margin-top:0">How to use</h3>
   <p style="color:var(--muted);font-size:13px;line-height:1.7;margin:0">
-    1) Month select karein — us month ke sab buyers (sale invoices) aur suppliers (purchases) khud aa jayenge, transaction count ke saath.
-    2) <b>⬆ PDF</b> se FBR/IRIS se download ki hui official ATL PDF har party ke against save karein — ya <b>Check all missing</b> se STATL API se status le lein (dono chalte hain).
-    3) <b>⬇ Save PDF</b> se us month ki evidence file download karein aur sales tax return ke working papers ke saath rakhein —
-    further tax aur input tax admissibility ka proof.</p>
+    1) Select a month — all buyers (from sale invoices) and suppliers (from purchases) for that month appear automatically with transaction counts.
+    2) Use <b>⬆ PDF</b> to attach the official ATL PDF downloaded from FBR/IRIS against each party — or use <b>Check all missing</b> to fetch status from the STATL API (both work).
+    3) Use <b>⬇ Save PDF</b> to download the month's evidence file and keep it with the sales tax return working papers —
+    proof of further tax and input tax admissibility.</p>
 </div>
 
 <script>
@@ -110,7 +110,7 @@ pdfInput.onchange = async () => {
     {method:'POST', headers:{'X-CSRFToken':getCookie('csrftoken')}, body: fd});
   let d = await r.json();
   if(!d.ok && d.needs_status){
-    const act = confirm(d.error + "\n\nOK = Active tha  |  Cancel = In-Active tha");
+    const act = confirm(d.error + "\n\nOK = was Active  |  Cancel = was In-Active");
     fd.append('status', act ? 'Active' : 'Inactive');
     const r2 = await fetch("{% url 'digital_invoicing:atl_evidence_upload' %}",
       {method:'POST', headers:{'X-CSRFToken':getCookie('csrftoken')}, body: fd});
