@@ -604,6 +604,8 @@ class PurchaseService:
             tv += v; tst += st
             clean.append(it)
 
+        if not (data.get("supplier_name") or "").strip() and not data.get("supplier_id"):
+            raise SubmissionError("Supplier ka naam lazmi hai", simple=True)
         supplier = None
         if data.get("supplier_id"):
             supplier = Supplier.objects.filter(
@@ -660,3 +662,108 @@ class PurchaseService:
         agg = qs.aggregate(value=Sum("total_value"),
                            input_tax=Sum("total_sales_tax"), n=Count("id"))
         return {k: (v or 0) for k, v in agg.items()}
+
+
+# --------------------------------------------------------------------------
+# Monthly ATL Evidence (buyers + suppliers, per tax period)
+# Further tax / input tax admissibility ke audit-proof ke liye.
+# --------------------------------------------------------------------------
+class ATLReportService:
+    """Ek tax period ke SAB counterparties:
+      - Buyers: us month ki VALID sale invoices se (grouped by NTN/CNIC)
+      - Suppliers: us month ki purchase invoices se
+    Har party ka ATL status (saved ATLStatus record) + FBR STATL API se
+    on-demand check."""
+
+    def __init__(self, user):
+        self.user = user
+
+    @staticmethod
+    def _ym(period):
+        return int(period[:4]), int(period[5:7])
+
+    def month_report(self, period):
+        from django.db.models import Count
+        from .models import PurchaseInvoice, ATLStatus
+        y, m = self._ym(period)
+
+        buyers = list(
+            Invoice.objects.filter(owner=self.user, status="valid",
+                                   invoice_date__year=y, invoice_date__month=m)
+            .values("buyer_ntn_cnic", "buyer_business_name",
+                    "buyer_registration_type")
+            .annotate(tx=Count("id")).order_by("-tx"))
+        suppliers = list(
+            PurchaseInvoice.objects.filter(owner=self.user,
+                                           invoice_date__year=y,
+                                           invoice_date__month=m)
+            .values("supplier_ntn_cnic", "supplier_name")
+            .annotate(tx=Count("id")).order_by("-tx"))
+
+        regs = ({b["buyer_ntn_cnic"] for b in buyers if b["buyer_ntn_cnic"]} |
+                {s["supplier_ntn_cnic"] for s in suppliers
+                 if s["supplier_ntn_cnic"]})
+        atl = {r.reg_no: r for r in ATLStatus.objects.filter(
+            owner=self.user, period=period, reg_no__in=regs)}
+
+        rows = []
+        for b in buyers:
+            rec = atl.get(b["buyer_ntn_cnic"])
+            rows.append({
+                "party_type": "Buyer",
+                "name": b["buyer_business_name"] or "—",
+                "reg_no": b["buyer_ntn_cnic"] or "",
+                "reg_type": b["buyer_registration_type"],
+                "tx": b["tx"], "tx_label": f'{b["tx"]} sale invoice(s)',
+                "atl": rec.status if rec else None,
+                "checked_at": rec.uploaded_at if rec else None,
+                "pdf_pk": rec.pk if (rec and rec.evidence_pdf) else None,
+                "verified": rec.verified if rec else False,
+            })
+        for s in suppliers:
+            rec = atl.get(s["supplier_ntn_cnic"])
+            rows.append({
+                "party_type": "Supplier",
+                "name": s["supplier_name"] or "—",
+                "reg_no": s["supplier_ntn_cnic"] or "",
+                "reg_type": "",
+                "tx": s["tx"], "tx_label": f'{s["tx"]} purchase(s)',
+                "atl": rec.status if rec else None,
+                "checked_at": rec.uploaded_at if rec else None,
+                "pdf_pk": rec.pk if (rec and rec.evidence_pdf) else None,
+                "verified": rec.verified if rec else False,
+            })
+        return rows
+
+    def check_party(self, reg_no, period):
+        """FBR STATL API se status le kar us period ke against save karo."""
+        from .reference_data import get_reference_client
+        from .models import ATLStatus
+        reg_no = (reg_no or "").strip()
+        if not reg_no:
+            raise SubmissionError("Reg no khali hai", simple=True)
+        y, m = self._ym(period)
+        result = get_reference_client().statl_check(
+            reg_no, date=f"{y:04d}-{m:02d}-01")
+        raw = (result.get("statl_status") or result.get("status") or "")
+        status = "Active" if "in" not in raw.lower().replace("-", "") else "Inactive"
+        # "In-Active"/"Inactive" -> Inactive; "Active" -> Active
+        if raw.lower().replace("-", "").startswith("inactive"):
+            status = "Inactive"
+        elif raw.lower().startswith("active"):
+            status = "Active"
+        rec, _ = ATLStatus.objects.update_or_create(
+            owner=self.user, reg_no=reg_no, period=period,
+            defaults={"status": status})
+        return rec
+
+    def check_all_missing(self, period):
+        done, failed = 0, 0
+        for row in self.month_report(period):
+            if row["reg_no"] and not row["atl"]:
+                try:
+                    self.check_party(row["reg_no"], period)
+                    done += 1
+                except Exception:
+                    failed += 1
+        return done, failed

@@ -153,4 +153,22 @@
   .chartcard .hint{color:var(--muted);font-size:12px;margin-bottom:12px}
   .chartgrid{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin:20px 0}
   @media(max-width:900px){.chartgrid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+    box-shadow:var(--shadow);padding:18px 20px}
+  .card h3{font-family:var(--font-d);font-size:15px;color:var(--ink)}
+  .card table th{padding:8px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .card table td{font-size:13.5px;color:var(--ink)}
+  .filterbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+    box-shadow:var(--shadow);padding:12px 14px}
+  .fin{padding:9px 12px;border:1px solid var(--line);border-radius:9px;font:inherit;
+    font-size:13px;color:var(--navy);background:#fff;outline:none;min-width:150px}
+  .fin:focus{border-color:var(--green)}
+  .fin.grow{flex:1;min-width:200px}
+  .fsel{padding:9px 12px;border:1px solid var(--line);border-radius:9px;font:inherit;
+    font-size:13px;color:var(--navy);background:#fff;cursor:pointer;outline:none}
+  .fbtn{padding:9px 18px;border:none;border-radius:9px;background:var(--navy);color:#fff;
+    font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  .fclear{font-size:12.5px;color:var(--muted);text-decoration:none;font-weight:600}
+  .fclear:hover{color:var(--navy)}
 </style>

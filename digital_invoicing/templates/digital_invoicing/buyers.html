@@ -24,6 +24,17 @@
 
 {% block di_content %}
 {% if saved %}<div class="savedmsg">✓ Buyer saved</div>{% endif %}
+<form class="filterbar" method="get">
+  <input class="fin grow" name="q" value="{{ q }}" placeholder="🔍 Buyer name ya NTN/CNIC…">
+  <select name="reg" class="fsel">
+    <option value="">All types</option>
+    <option {% if reg == 'Registered' %}selected{% endif %}>Registered</option>
+    <option {% if reg == 'Unregistered' %}selected{% endif %}>Unregistered</option>
+  </select>
+  <button class="fbtn" type="submit">Filter</button>
+  {% if q or reg %}<a class="fclear" href="{% url 'digital_invoicing:buyers' %}">✕ Clear</a>{% endif %}
+</form>
+
 <div class="bwrap">
 
   <div class="di-card">

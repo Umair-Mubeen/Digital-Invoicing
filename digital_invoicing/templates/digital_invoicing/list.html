@@ -29,22 +29,34 @@
 {% endblock %}
 
 {% block di_content %}
-<form class="toolbar" method="get">
-  <div class="search">
-    <input name="q" value="{{ q }}" placeholder="FBR number, buyer name ya NTN se dhundo…">
-    <button type="submit">Search</button>
-  </div>
+<form class="filterbar" method="get">
+  <input class="fin grow" name="q" value="{{ q }}" placeholder="🔍 FBR number, buyer name ya NTN…">
   {% if businesses|length > 1 %}
-  <select name="biz" onchange="this.form.submit()" class="fpill" style="cursor:pointer">
+  <select name="biz" class="fsel">
     <option value="">All businesses</option>
     {% for b in businesses %}
       <option value="{{ b.pk }}" {% if biz == b.pk|stringformat:"s" %}selected{% endif %}>{{ b.business_name }}</option>
     {% endfor %}
   </select>
   {% endif %}
-  <a class="fpill {% if not status %}on{% endif %}" href="?q={{ q|urlencode }}&biz={{ biz }}">All</a>
-  <a class="fpill {% if status == 'valid' %}on{% endif %}" href="?q={{ q|urlencode }}&biz={{ biz }}&status=valid">✓ Valid</a>
-  <a class="fpill {% if status == 'failed' %}on{% endif %}" href="?q={{ q|urlencode }}&biz={{ biz }}&status=failed">✗ Failed</a>
+  <select name="type" class="fsel">
+    <option value="">All types</option>
+    <option {% if itype == 'Sale Invoice' %}selected{% endif %}>Sale Invoice</option>
+    <option {% if itype == 'Debit Note' %}selected{% endif %}>Debit Note</option>
+  </select>
+  <select name="status" class="fsel">
+    <option value="">All statuses</option>
+    <option value="valid" {% if status == 'valid' %}selected{% endif %}>✓ Valid</option>
+    <option value="failed" {% if status == 'failed' %}selected{% endif %}>✗ Failed</option>
+    <option value="cancelled" {% if status == 'cancelled' %}selected{% endif %}>Cancelled</option>
+    <option value="draft" {% if status == 'draft' %}selected{% endif %}>Draft</option>
+  </select>
+  <input class="fin" type="date" name="from" value="{{ date_from }}" title="From date">
+  <input class="fin" type="date" name="to" value="{{ date_to }}" title="To date">
+  <button class="fbtn" type="submit">Filter</button>
+  {% if q or status or itype or date_from or date_to or biz %}
+    <a class="fclear" href="{% url 'digital_invoicing:list' %}">✕ Clear</a>
+  {% endif %}
 </form>
 
 <div class="di-card">
@@ -79,9 +91,9 @@
   </table>
   {% if page.paginator.num_pages > 1 %}
   <div class="pager">
-    {% if page.has_previous %}<a href="?q={{ q|urlencode }}&biz={{ biz }}&status={{ status }}&page={{ page.previous_page_number }}">← Prev</a>{% endif %}
+    {% if page.has_previous %}<a href="?{{ qstring }}&page={{ page.previous_page_number }}">← Prev</a>{% endif %}
     <span>Page {{ page.number }} / {{ page.paginator.num_pages }}</span>
-    {% if page.has_next %}<a href="?q={{ q|urlencode }}&biz={{ biz }}&status={{ status }}&page={{ page.next_page_number }}">Next →</a>{% endif %}
+    {% if page.has_next %}<a href="?{{ qstring }}&page={{ page.next_page_number }}">Next →</a>{% endif %}
   </div>
   {% endif %}
   {% else %}

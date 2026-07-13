@@ -746,3 +746,300 @@ class DashboardChartPlacementTests(TestCase):
         # sidebar active link clean ho — class attr mein chartgrid na ho
         aside = html[:html.index("</aside>")]
         self.assertNotIn('class="chartgrid"', aside)
+
+
+class FilterTests(TestCase):
+    """Card tables + filters: invoices (type/status/date), products, buyers."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("uflt", password="x")
+        SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="Biz",
+            province="Sindh", address="K")
+        self.c = Client()
+        self.c.force_login(self.user)
+        for d, ntn, buyer in (("2026-06-10", "7654321", "Alpha Traders"),
+                              ("2026-07-05", "7654322", "Beta Corp")):
+            self.c.post("/digital-invoicing/submit/", data={
+                "invoiceType": "Sale Invoice", "invoiceDate": d,
+                "buyerNTNCNIC": ntn, "buyerBusinessName": buyer,
+                "buyerProvince": "Sindh", "buyerAddress": "K",
+                "buyerRegistrationType": "Registered",
+                "items": [{"saleType": "Goods at standard rate",
+                           "hsCode": "0101.2100", "productDescription": "T",
+                           "uoM": "Numbers, pieces, units", "quantity": 1,
+                           "valueSalesExcludingST": 1000}],
+            }, content_type="application/json")
+
+    def test_invoice_date_range_filter(self):
+        r = self.c.get("/digital-invoicing/invoices/?from=2026-07-01&to=2026-07-31")
+        self.assertContains(r, "Beta Corp")
+        self.assertNotContains(r, "Alpha Traders")
+
+    def test_invoice_type_and_status_filter(self):
+        r = self.c.get("/digital-invoicing/invoices/?type=Debit+Note")
+        self.assertNotContains(r, "Beta Corp")
+        r = self.c.get("/digital-invoicing/invoices/?status=valid&q=Alpha")
+        self.assertContains(r, "Alpha Traders")
+
+    def test_pager_preserves_filters(self):
+        r = self.c.get("/digital-invoicing/invoices/?status=valid")
+        self.assertEqual(r.context["qstring"], "status=valid")
+
+    def test_products_filters(self):
+        from .models import Product, Category
+        cat = Category.objects.create(owner=self.user, name="Fertilizer")
+        Product.objects.create(owner=self.user, name="Urea Bag",
+                               sku="UR-1", category=cat)
+        Product.objects.create(owner=self.user, name="Cement Bag")
+        r = self.c.get(f"/digital-invoicing/products/?cat={cat.pk}")
+        self.assertContains(r, "Urea Bag")
+        self.assertNotContains(r, "Cement Bag")
+        r = self.c.get("/digital-invoicing/products/?q=UR-1")
+        self.assertContains(r, "Urea Bag")
+
+    def test_buyers_filter(self):
+        r = self.c.get("/digital-invoicing/buyers/?q=Alpha")
+        self.assertContains(r, "Alpha Traders")
+        self.assertNotContains(r, "Beta Corp")
+
+    def test_purchases_filter(self):
+        from .services import PurchaseService
+        PurchaseService(self.user).create(
+            {"invoice_date": "2026-07-03", "supplier_name": "Karachi Steel"},
+            [{"description": "Rod", "quantity": 1,
+              "value_excl_st": 100, "sales_tax": 18}])
+        r = self.c.get("/digital-invoicing/purchases/?q=Karachi")
+        self.assertContains(r, "Karachi Steel")
+        r = self.c.get("/digital-invoicing/purchases/?q=Lahore")
+        self.assertNotContains(r, "Karachi Steel")
+
+
+class ATLMonthlyTests(TestCase):
+    """Monthly ATL evidence: report rows, STATL check, PDF download."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("uatl", password="x")
+        SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="Biz",
+            province="Sindh", address="K")
+        self.c = Client()
+        self.c.force_login(self.user)
+        # July: buyer ko 2 sales, supplier se 1 purchase
+        for _ in range(2):
+            self.c.post("/digital-invoicing/submit/", data={
+                "invoiceType": "Sale Invoice", "invoiceDate": "2026-07-05",
+                "buyerNTNCNIC": "7654321", "buyerBusinessName": "Alpha",
+                "buyerProvince": "Sindh", "buyerAddress": "K",
+                "buyerRegistrationType": "Registered",
+                "items": [{"saleType": "Goods at standard rate",
+                           "hsCode": "0101.2100", "productDescription": "T",
+                           "uoM": "Numbers, pieces, units", "quantity": 1,
+                           "valueSalesExcludingST": 1000}],
+            }, content_type="application/json")
+        from .services import PurchaseService
+        PurchaseService(self.user).create(
+            {"invoice_date": "2026-07-10", "supplier_name": "Steel Co",
+             "supplier_ntn_cnic": "1111111"},
+            [{"description": "Rod", "quantity": 1,
+              "value_excl_st": 500, "sales_tax": 90}])
+
+    def test_month_report_rows(self):
+        from .services import ATLReportService
+        rows = ATLReportService(self.user).month_report("2026-07")
+        self.assertEqual(len(rows), 2)
+        buyer = next(r for r in rows if r["party_type"] == "Buyer")
+        supp = next(r for r in rows if r["party_type"] == "Supplier")
+        self.assertEqual(buyer["tx"], 2)
+        self.assertEqual(supp["reg_no"], "1111111")
+        self.assertIsNone(buyer["atl"])            # abhi check nahi hua
+
+    def test_check_party_saves_status(self):
+        from .services import ATLReportService
+        from .models import ATLStatus
+        rec = ATLReportService(self.user).check_party("7654321", "2026-07")
+        self.assertIn(rec.status, ("Active", "Inactive"))
+        self.assertTrue(ATLStatus.objects.filter(
+            owner=self.user, reg_no="7654321", period="2026-07").exists())
+
+    def test_check_all_endpoint(self):
+        r = self.c.post("/digital-invoicing/atl/check/",
+                        {"all": "1", "period": "2026-07"})
+        body = r.json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["done"], 2)
+        # ab report mein statuses filled
+        r = self.c.get("/digital-invoicing/atl/?period=2026-07")
+        self.assertNotContains(r, "Not checked")
+
+    def test_pdf_downloads(self):
+        self.c.post("/digital-invoicing/atl/check/",
+                    {"all": "1", "period": "2026-07"})
+        r = self.c.get("/digital-invoicing/atl/report.pdf?period=2026-07")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/pdf")
+        self.assertIn("ATL-Evidence-2026-07.pdf", r["Content-Disposition"])
+        self.assertTrue(r.content.startswith(b"%PDF"))
+        self.assertGreater(len(r.content), 1500)
+
+    def test_owner_isolated(self):
+        other = get_user_model().objects.create_user("uatl2", password="x")
+        c2 = Client(); c2.force_login(other)
+        r = c2.get("/digital-invoicing/atl/?period=2026-07")
+        self.assertNotContains(r, "Alpha")
+
+
+class ATLEvidencePDFTests(TestCase):
+    """Per-party per-month FBR ATL PDF upload/save/view."""
+
+    PDF = b"%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<<>>\n%%EOF"
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("uev", password="x")
+        SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="Biz",
+            province="Sindh", address="K")
+        self.c = Client()
+        self.c.force_login(self.user)
+
+    def _upload(self, c=None, name="atl.pdf", body=None):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return (c or self.c).post("/digital-invoicing/atl/evidence/upload/", {
+            "reg_no": "7654321", "period": "2026-07",
+            "status": "Active",   # stub PDF text-less — manual confirm path
+            "file": SimpleUploadedFile(name, body or self.PDF,
+                                       content_type="application/pdf")})
+
+    def test_upload_saves_and_view_works(self):
+        from .models import ATLStatus
+        r = self._upload()
+        self.assertTrue(r.json()["ok"], r.content)
+        rec = ATLStatus.objects.get(owner=self.user, reg_no="7654321",
+                                    period="2026-07")
+        self.assertTrue(rec.evidence_pdf)
+        v = self.c.get(f"/digital-invoicing/atl/evidence/{rec.pk}/")
+        self.assertEqual(v.status_code, 200)
+        self.assertEqual(v["Content-Type"], "application/pdf")
+
+    def test_non_pdf_rejected(self):
+        r = self._upload(name="x.pdf", body=b"not a pdf at all")
+        self.assertEqual(r.status_code, 400)
+
+    def test_other_user_cannot_view(self):
+        self._upload()
+        from .models import ATLStatus
+        rec = ATLStatus.objects.get(owner=self.user, reg_no="7654321")
+        other = get_user_model().objects.create_user("uev2", password="x")
+        c2 = Client(); c2.force_login(other)
+        self.assertEqual(
+            c2.get(f"/digital-invoicing/atl/evidence/{rec.pk}/").status_code,
+            404)
+
+    def test_reupload_replaces(self):
+        self._upload()
+        self._upload(body=b"%PDF-1.4 second version %%EOF")
+        from .models import ATLStatus
+        self.assertEqual(ATLStatus.objects.filter(
+            owner=self.user, reg_no="7654321", period="2026-07").count(), 1)
+
+
+class InvoiceFlowATLTests(TestCase):
+    """Invoice success modal se buyer ATL PDF upload (wahi endpoint)."""
+
+    def test_invoice_page_has_atl_upload_hook(self):
+        u = get_user_model().objects.create_user("uinv", password="x")
+        SellerProfile.objects.create(
+            user=u, ntn_cnic="1234567", business_name="Biz",
+            province="Sindh", address="K")
+        c = Client(); c.force_login(u)
+        r = c.get("/digital-invoicing/create/")
+        self.assertContains(r, "uploadBuyerATL")
+        self.assertContains(r, "atl/evidence/upload/")
+
+    def test_upload_from_invoice_period_matches_invoice_month(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from .models import ATLStatus
+        u = get_user_model().objects.create_user("uinv2", password="x")
+        SellerProfile.objects.create(
+            user=u, ntn_cnic="1234567", business_name="Biz",
+            province="Sindh", address="K")
+        c = Client(); c.force_login(u)
+        # jaise modal karta hai: reg_no=buyer NTN, period=invoice month
+        r = c.post("/digital-invoicing/atl/evidence/upload/", {
+            "reg_no": "7654321", "period": "2026-07", "status": "Active",
+            "file": SimpleUploadedFile("atl.pdf", b"%PDF-1.4 x %%EOF",
+                                       content_type="application/pdf")})
+        self.assertTrue(r.json()["ok"])
+        self.assertTrue(ATLStatus.objects.filter(
+            owner=u, reg_no="7654321", period="2026-07",
+            evidence_pdf__isnull=False).exclude(evidence_pdf="").exists())
+
+
+class ATLPDFParsingTests(TestCase):
+    """PDF content read: NTN match, status extraction, manual fallback."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("updf", password="x")
+        SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="Biz",
+            province="Sindh", address="K")
+        self.c = Client()
+        self.c.force_login(self.user)
+
+    def _real_pdf(self, text):
+        """reportlab se asal text-wali PDF (jaisi FBR verification PDF)."""
+        import io
+        from reportlab.pdfgen import canvas
+        buf = io.BytesIO()
+        cv = canvas.Canvas(buf)
+        y = 800
+        for line in text.split("\n"):
+            cv.drawString(60, y, line); y -= 20
+        cv.save()
+        buf.seek(0)
+        return buf.read()
+
+    def _upload(self, body, reg="7654321", status=None):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        data = {"reg_no": reg, "period": "2026-07",
+                "file": SimpleUploadedFile("atl.pdf", body,
+                                           content_type="application/pdf")}
+        if status:
+            data["status"] = status
+        return self.c.post("/digital-invoicing/atl/evidence/upload/", data)
+
+    def test_active_pdf_auto_verified(self):
+        from .models import ATLStatus
+        pdf = self._real_pdf("FBR Active Taxpayer List\nRegistration No: 7654321\nStatus: Active")
+        r = self._upload(pdf)
+        body = r.json()
+        self.assertTrue(body["ok"], body)
+        self.assertEqual(body["status"], "Active")
+        self.assertTrue(body["verified"])
+        rec = ATLStatus.objects.get(owner=self.user, reg_no="7654321")
+        self.assertTrue(rec.verified)
+
+    def test_inactive_pdf_detected(self):
+        pdf = self._real_pdf("Registration No: 7654321\nStatus: In-Active")
+        body = self._upload(pdf).json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["status"], "Inactive")
+        self.assertTrue(body["verified"])
+
+    def test_wrong_party_pdf_rejected(self):
+        pdf = self._real_pdf("Registration No: 9999999\nStatus: Active")
+        r = self._upload(pdf, reg="7654321")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("nahi mila", r.json()["error"])
+
+    def test_unreadable_pdf_needs_manual_then_saves(self):
+        from .models import ATLStatus
+        blank = b"%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<<>>\n%%EOF"
+        r = self._upload(blank)
+        self.assertEqual(r.status_code, 400)
+        self.assertTrue(r.json().get("needs_status"))
+        r2 = self._upload(blank, status="Inactive")
+        self.assertTrue(r2.json()["ok"])
+        rec = ATLStatus.objects.get(owner=self.user, reg_no="7654321")
+        self.assertEqual(rec.status, "Inactive")
+        self.assertFalse(rec.verified)          # manual — verified nahi

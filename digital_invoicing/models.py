@@ -296,6 +296,11 @@ class ATLStatus(models.Model):
     reg_no = models.CharField(max_length=20, db_index=True)   # NTN/STRN/CNIC
     period = models.CharField(max_length=7)                   # "2026-07"
     status = models.CharField(max_length=10, choices=STATUS, default="Active")
+    # FBR/IRIS se download ki hui official ATL PDF — per party per month proof
+    evidence_pdf = models.FileField(upload_to="atl_evidence/%Y/%m/",
+                                    null=True, blank=True)
+    # True = status PDF ke text se khud parh kar confirm hua (NTN match ke saath)
+    verified = models.BooleanField(default=False)
     uploaded_at = models.DateTimeField(auto_now=True)
 
     class Meta:

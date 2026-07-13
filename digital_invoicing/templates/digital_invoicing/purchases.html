@@ -27,6 +27,14 @@
     <span id="p_totals" style="margin-left:auto;font-weight:600"></span>
   </div>
 </div>
+<form class="filterbar" method="get">
+  <input class="fin grow" name="q" value="{{ q }}" placeholder="🔍 Supplier name, NTN ya invoice #…">
+  <input class="fin" type="date" name="from" value="{{ date_from }}" title="From">
+  <input class="fin" type="date" name="to" value="{{ date_to }}" title="To">
+  <button class="fbtn" type="submit">Filter</button>
+  {% if q or date_from or date_to %}<a class="fclear" href="{% url 'digital_invoicing:purchases' %}">✕ Clear</a>{% endif %}
+</form>
+
 <div class="card">
   <h3 style="margin-top:0">Recent purchases</h3>
   <table style="width:100%;border-collapse:collapse">

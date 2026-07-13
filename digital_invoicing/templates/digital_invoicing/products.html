@@ -28,6 +28,20 @@
     <button class="btn-g" type="submit">{% if editing %}Update{% else %}+ Add{% endif %}</button>
   </form>
 </div>
+<form class="filterbar" method="get">
+  <input class="fin grow" name="q" value="{{ q }}" placeholder="🔍 Name, SKU ya HS code…">
+  <select name="cat" class="fsel">
+    <option value="">All categories</option>
+    {% for c in categories %}<option value="{{ c.pk }}" {% if cat == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+  </select>
+  <select name="stype" class="fsel">
+    <option value="">All sale types</option>
+    {% for st in sale_types %}<option {% if stype == st %}selected{% endif %}>{{ st }}</option>{% endfor %}
+  </select>
+  <button class="fbtn" type="submit">Filter</button>
+  {% if q or cat or stype %}<a class="fclear" href="{% url 'digital_invoicing:products' %}">✕ Clear</a>{% endif %}
+</form>
+
 <div class="card">
   <table style="width:100%;border-collapse:collapse">
     <tr style="text-align:left;color:var(--muted)"><th style="padding:8px 6px">Name</th><th>SKU</th><th>HS</th><th>Sale Type</th><th class="num">Price</th><th class="num">Stock</th><th></th></tr>

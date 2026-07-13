@@ -1,0 +1,128 @@
+{% extends "digital_invoicing/base_di.html" %}
+{% block na_atl %}on{% endblock %}
+{% block di_title_text %}ATL Monthly{% endblock %}
+{% block di_title %}ATL Monthly Evidence{% endblock %}
+{% block di_subtitle %}Har mahine ke buyers + suppliers ka STATL status — audit proof{% endblock %}
+{% block di_actions %}
+<a class="btn-g" style="background:var(--navy)" href="{% url 'digital_invoicing:atl_report_pdf' %}?period={{ period }}">⬇ Save PDF — {{ period }}</a>
+{% endblock %}
+
+{% block di_content %}
+<form class="filterbar" method="get">
+  <input class="fin" type="month" name="period" value="{{ period }}">
+  <button class="fbtn" type="submit">Load month</button>
+  {% if missing %}
+  <button class="fbtn" type="button" style="background:var(--green-d)" onclick="checkAll(this)">
+    ✓ Check all missing ({{ missing }}) via FBR</button>
+  {% endif %}
+  <a class="fclear" href="{% url 'digital_invoicing:atl_upload' %}">CSV upload (bulk) →</a>
+</form>
+
+<div class="card">
+  <h3 style="margin-top:0">Counterparties — {{ period }}</h3>
+  <table style="width:100%;border-collapse:collapse">
+    <tr style="text-align:left;color:var(--muted)">
+      <th style="padding:8px 6px">Party</th><th>Type</th><th>NTN/CNIC</th>
+      <th>Transactions</th><th>ATL Status</th><th>FBR PDF</th><th>Checked</th><th></th></tr>
+    {% for r in rows %}
+      <tr style="border-top:1px solid var(--line)">
+        <td style="padding:8px 6px;font-weight:600">{{ r.name|default:"(No name saved)" }}</td>
+        <td><span class="pill" style="background:{% if r.party_type == 'Buyer' %}#e8f0fe;color:#2563eb{% else %}#fdf3e3;color:#b8860b{% endif %}">{{ r.party_type }}</span></td>
+        <td>{{ r.reg_no|default:"—" }}</td>
+        <td>{{ r.tx_label }}</td>
+        <td>
+          {% if r.atl == 'Active' %}<span class="pill valid">✓ Active</span>
+          {% elif r.atl == 'Inactive' %}<span class="pill failed">✗ Inactive</span>
+          {% else %}<span class="pill" style="background:#f1f4f8;color:var(--muted)">Not checked</span>{% endif %}
+        </td>
+        <td>
+          {% if not r.reg_no %}
+            <span class="pill" style="background:#fdf3e3;color:#b8860b">NTN missing</span>
+            <a href="{% if r.party_type == 'Buyer' %}{% url 'digital_invoicing:buyers' %}{% else %}{% url 'digital_invoicing:suppliers' %}{% endif %}"
+               style="margin-left:6px;color:var(--navy);font-weight:600;font-size:12px;text-decoration:none">
+               NTN add karein →</a>
+          {% endif %}
+          {% if r.pdf_pk %}
+            <a href="{% url 'digital_invoicing:atl_evidence_view' r.pdf_pk %}" target="_blank"
+               style="color:var(--green-d);font-weight:600;text-decoration:none">📄 View</a>
+            {% if r.verified %}<span title="Status PDF ke text se verified — NTN matched" style="color:var(--green-d);font-size:11px;font-weight:700">✓v</span>
+            {% else %}<span title="Manually confirmed — PDF se read nahi hua" style="color:#b8860b;font-size:11px;font-weight:700">m</span>{% endif %}
+          {% else %}<span style="color:var(--muted)">—</span>{% endif %}
+          {% if r.reg_no %}
+            <button type="button" onclick="pickPdf(this,'{{ r.reg_no }}')"
+              style="margin-left:6px;border:1px solid var(--navy);color:var(--navy);background:#fff;border-radius:6px;padding:2px 10px;cursor:pointer;font-weight:600">
+              {% if r.pdf_pk %}↻{% else %}⬆{% endif %} PDF</button>
+          {% endif %}
+        </td>
+        <td style="color:var(--muted)">{{ r.checked_at|date:"d M Y"|default:"—" }}</td>
+        <td>
+          {% if r.reg_no %}
+          <button type="button" onclick="checkOne(this,'{{ r.reg_no }}')"
+            style="border:1px solid var(--green-d);color:var(--green-d);background:#fff;border-radius:6px;padding:2px 10px;cursor:pointer;font-weight:600">
+            {% if r.atl %}↻ Recheck{% else %}Check{% endif %}</button>
+          {% endif %}
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="8" style="padding:16px 6px;color:var(--muted)">
+        Is month mein koi valid sale ya purchase nahi — pehle invoices/purchases banayein.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h3 style="margin-top:0">Kaise use karein</h3>
+  <p style="color:var(--muted);font-size:13px;line-height:1.7;margin:0">
+    1) Month select karein — us month ke sab buyers (sale invoices) aur suppliers (purchases) khud aa jayenge, transaction count ke saath.
+    2) <b>⬆ PDF</b> se FBR/IRIS se download ki hui official ATL PDF har party ke against save karein — ya <b>Check all missing</b> se STATL API se status le lein (dono chalte hain).
+    3) <b>⬇ Save PDF</b> se us month ki evidence file download karein aur sales tax return ke working papers ke saath rakhein —
+    further tax aur input tax admissibility ka proof.</p>
+</div>
+
+<script>
+function getCookie(n){const v=document.cookie.match('(^|;)\\s*'+n+'\\s*=\\s*([^;]+)');return v?v.pop():'';}
+async function post(data){
+  const fd=new FormData();
+  for(const k in data) fd.append(k,data[k]);
+  fd.append('period','{{ period }}');
+  const r=await fetch("{% url 'digital_invoicing:atl_check' %}",{method:'POST',
+    headers:{'X-CSRFToken':getCookie('csrftoken')},body:fd});
+  return r.json();
+}
+async function checkOne(btn,reg){
+  btn.disabled=true;btn.textContent='…';
+  const d=await post({reg_no:reg});
+  if(d.ok) location.reload(); else {alert(d.error||'Failed');btn.disabled=false;}
+}
+const pdfInput = document.createElement('input');
+pdfInput.type='file'; pdfInput.accept='application/pdf'; pdfInput.style.display='none';
+document.body.appendChild(pdfInput);
+let pdfReg = null, pdfBtn = null;
+function pickPdf(btn, reg){ pdfReg = reg; pdfBtn = btn; pdfInput.value=''; pdfInput.click(); }
+pdfInput.onchange = async () => {
+  if(!pdfInput.files.length) return;
+  pdfBtn.disabled = true; pdfBtn.textContent = '…';
+  const fd = new FormData();
+  fd.append('reg_no', pdfReg);
+  fd.append('period', '{{ period }}');
+  fd.append('file', pdfInput.files[0]);
+  const r = await fetch("{% url 'digital_invoicing:atl_evidence_upload' %}",
+    {method:'POST', headers:{'X-CSRFToken':getCookie('csrftoken')}, body: fd});
+  let d = await r.json();
+  if(!d.ok && d.needs_status){
+    const act = confirm(d.error + "\n\nOK = Active tha  |  Cancel = In-Active tha");
+    fd.append('status', act ? 'Active' : 'Inactive');
+    const r2 = await fetch("{% url 'digital_invoicing:atl_evidence_upload' %}",
+      {method:'POST', headers:{'X-CSRFToken':getCookie('csrftoken')}, body: fd});
+    d = await r2.json();
+  }
+  if(d.ok) location.reload();
+  else { alert(d.error || 'Upload failed'); pdfBtn.disabled=false; pdfBtn.textContent='⬆ PDF'; }
+};
+async function checkAll(btn){
+  btn.disabled=true;btn.textContent='Checking…';
+  const d=await post({all:'1'});
+  if(d.ok) location.reload(); else {alert(d.error||'Failed');btn.disabled=false;}
+}
+</script>
+{% endblock %}

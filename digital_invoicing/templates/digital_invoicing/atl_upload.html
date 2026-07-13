@@ -21,6 +21,14 @@
 {% endblock %}
 
 {% block di_content %}
+<div style="background:var(--green-soft,#e7f9f1);border:1px solid #bfe8d8;border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+  <div style="flex:1;min-width:220px">
+    <b style="color:var(--green-d,#0b7d5c)">Naya tareeqa:</b>
+    <span style="color:var(--ink,#22314a);font-size:13.5px"> har buyer/supplier ki FBR ATL PDF month-wise upload karein — CSV ki zaroorat nahi.</span>
+  </div>
+  <a class="btn-g" href="{% url 'digital_invoicing:atl_report' %}">→ ATL Monthly kholen</a>
+</div>
+
 <div class="di-card up-card">
   <h3>Upload ATL file</h3>
   <div class="body">

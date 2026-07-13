@@ -24,6 +24,11 @@ urlpatterns = [
     path("inventory/", views.inventory, name="inventory"),
     path("suppliers/", views.suppliers, name="suppliers"),
     path("purchases/", views.purchases, name="purchases"),
+    path("atl/", views.atl_report, name="atl_report"),
+    path("atl/check/", views.atl_check, name="atl_check"),
+    path("atl/evidence/upload/", views.atl_evidence_upload, name="atl_evidence_upload"),
+    path("atl/evidence/<int:pk>/", views.atl_evidence_view, name="atl_evidence_view"),
+    path("atl/report.pdf", views.atl_report_pdf, name="atl_report_pdf"),
     path("atl-upload/", views.atl_upload, name="atl_upload"),
     # Auth (self-service SaaS onboarding)
     path("signup/", views.signup, name="signup"),

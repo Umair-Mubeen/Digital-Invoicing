@@ -138,17 +138,31 @@ def invoice_list(request):
         qs = qs.filter(Q(fbr_invoice_number__icontains=q) |
                        Q(buyer_business_name__icontains=q) |
                        Q(buyer_ntn_cnic__icontains=q))
-    if status in ("valid", "failed"):
+    _valid_statuses = {c[0] for c in Invoice.STATUS}
+    if status in _valid_statuses:
         qs = qs.filter(status=status)
     biz = request.GET.get("biz", "").strip()
     if biz.isdigit():
         qs = qs.filter(seller_profile_id=biz)
+    itype = request.GET.get("type", "").strip()
+    if itype in ("Sale Invoice", "Debit Note"):
+        qs = qs.filter(invoice_type=itype)
+    date_from = request.GET.get("from", "").strip()
+    date_to = request.GET.get("to", "").strip()
+    if date_from:
+        qs = qs.filter(invoice_date__gte=date_from)
+    if date_to:
+        qs = qs.filter(invoice_date__lte=date_to)
 
     paginator = Paginator(qs, 20)
     page = paginator.get_page(request.GET.get("page"))
     from .models import SellerProfile
+    qsdict = request.GET.copy()
+    qsdict.pop("page", None)
     return render(request, "digital_invoicing/list.html", {
         "page": page, "q": q, "status": status, "biz": biz,
+        "itype": itype, "date_from": date_from, "date_to": date_to,
+        "qstring": qsdict.urlencode(),
         "total": paginator.count,
         "businesses": SellerProfile.objects.filter(user=request.user).order_by("business_name"),
     })
@@ -570,10 +584,26 @@ def products(request):
     edit_pk = request.GET.get("edit")
     if edit_pk:
         editing = Product.objects.filter(owner=request.user, pk=edit_pk).first()
+    from django.db.models import Q
     items = Product.objects.filter(owner=request.user).select_related(
         "category", "brand")
-    return render(request, "digital_invoicing/products.html",
-                  {"items": items, "editing": editing})
+    pq = request.GET.get("q", "").strip()
+    if pq:
+        items = items.filter(Q(name__icontains=pq) | Q(sku__icontains=pq) |
+                             Q(hs_code__icontains=pq))
+    cat = request.GET.get("cat", "").strip()
+    if cat.isdigit():
+        items = items.filter(category_id=cat)
+    stype = request.GET.get("stype", "").strip()
+    if stype:
+        items = items.filter(sale_type=stype)
+    return render(request, "digital_invoicing/products.html", {
+        "items": items, "editing": editing,
+        "q": pq, "cat": cat, "stype": stype,
+        "categories": Category.objects.filter(owner=request.user),
+        "sale_types": Product.objects.filter(owner=request.user)
+                             .values_list("sale_type", flat=True).distinct(),
+    })
 
 
 @login_required
@@ -656,10 +686,23 @@ def purchases(request):
         except json.JSONDecodeError:
             return JsonResponse({"ok": False, "error": "Invalid JSON"},
                                 status=400)
+    from django.db.models import Q
     pis = PurchaseInvoice.objects.filter(owner=request.user)\
-        .select_related("supplier")[:100]
+        .select_related("supplier")
+    pq = request.GET.get("q", "").strip()
+    if pq:
+        pis = pis.filter(Q(supplier_name__icontains=pq) |
+                         Q(supplier_invoice_no__icontains=pq) |
+                         Q(supplier_ntn_cnic__icontains=pq))
+    pfrom = request.GET.get("from", "").strip()
+    pto = request.GET.get("to", "").strip()
+    if pfrom:
+        pis = pis.filter(invoice_date__gte=pfrom)
+    if pto:
+        pis = pis.filter(invoice_date__lte=pto)
+    pis = pis[:100]
     return render(request, "digital_invoicing/purchases.html", {
-        "purchases": pis,
+        "purchases": pis, "q": pq, "date_from": pfrom, "date_to": pto,
         "suppliers_json": json.dumps(
             [{"id": s.pk, "name": s.business_name, "ntn": s.ntn_cnic}
              for s in Supplier.objects.filter(owner=request.user)[:200]]),
@@ -703,7 +746,15 @@ def _atl_status_for(user, reg_no, period=None):
 def buyers(request):
     """Buyers manager — list + add/edit/delete + ATL status column."""
     from .models import Buyer
+    from django.db.models import Q as _Q
     rows = Buyer.objects.filter(owner=request.user)
+    bq = request.GET.get("q", "").strip()
+    if bq:
+        rows = rows.filter(_Q(business_name__icontains=bq) |
+                           _Q(ntn_cnic__icontains=bq))
+    breg = request.GET.get("reg", "").strip()
+    if breg in ("Registered", "Unregistered"):
+        rows = rows.filter(registration_type=breg)
     edit_id = request.GET.get("edit") or request.POST.get("edit_id")
     editing = rows.filter(pk=edit_id).first() if edit_id else None
     saved = False
@@ -740,11 +791,237 @@ def buyers(request):
 
     from .models import SellerProfile
     return render(request, "digital_invoicing/buyers.html", {
+        "q": bq, "reg": breg,
         "buyer_list": buyer_list, "editing": editing, "saved": saved,
         "provinces": [p[0] for p in SellerProfile.PROVINCES],
         "reg_types": ["Registered", "Unregistered"],
         "period": period,
     })
+
+
+@login_required
+def atl_report(request):
+    """Monthly ATL evidence — us month ke sab buyers/suppliers ka status."""
+    from .services import ATLReportService
+    from datetime import date
+    period = request.GET.get("period") or date.today().strftime("%Y-%m")
+    rows = ATLReportService(request.user).month_report(period)
+    return render(request, "digital_invoicing/atl_report.html", {
+        "period": period, "rows": rows,
+        "missing": sum(1 for r in rows if r["reg_no"] and not r["atl"]),
+    })
+
+
+@login_required
+@require_POST
+def atl_check(request):
+    """Ek party ya sab missing parties ka FBR STATL check."""
+    from .services import ATLReportService, SubmissionError
+    period = request.POST.get("period", "")
+    svc = ATLReportService(request.user)
+    try:
+        if request.POST.get("all") == "1":
+            done, failed = svc.check_all_missing(period)
+            log_event(request, "atl_checked_all", period=period,
+                      done=done, failed=failed)
+            return JsonResponse({"ok": True, "done": done, "failed": failed})
+        rec = svc.check_party(request.POST.get("reg_no", ""), period)
+        log_event(request, "atl_checked", reg_no=rec.reg_no,
+                  period=period, status=rec.status)
+        return JsonResponse({"ok": True, "status": rec.status})
+    except SubmissionError as e:
+        return JsonResponse({"ok": False, "error": e.message}, status=400)
+
+
+@login_required
+def atl_report_pdf(request):
+    """Monthly ATL evidence PDF — audit ke liye save karne wali file."""
+    from .services import ATLReportService
+    from .models import SellerProfile
+    from datetime import date, datetime as _dt
+    from django.http import HttpResponse
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
+                                    Paragraph, Spacer)
+
+    period = request.GET.get("period") or date.today().strftime("%Y-%m")
+    rows = ATLReportService(request.user).month_report(period)
+    biz = SellerProfile.objects.filter(user=request.user).first()
+
+    resp = HttpResponse(content_type="application/pdf")
+    resp["Content-Disposition"] = (
+        f'attachment; filename="ATL-Evidence-{period}.pdf"')
+
+    NAVY = colors.HexColor("#0A2647")
+    GREEN = colors.HexColor("#0D9E72")
+    RED = colors.HexColor("#C0392B")
+    LINE = colors.HexColor("#E3EAF2")
+
+    doc = SimpleDocTemplate(resp, pagesize=A4,
+                            leftMargin=16*mm, rightMargin=16*mm,
+                            topMargin=16*mm, bottomMargin=16*mm)
+    ss = getSampleStyleSheet()
+    h1 = ParagraphStyle("h1", parent=ss["Title"], textColor=NAVY,
+                        fontSize=16, spaceAfter=2)
+    sub = ParagraphStyle("sub", parent=ss["Normal"], textColor=colors.grey,
+                         fontSize=9, spaceAfter=10)
+    h2 = ParagraphStyle("h2", parent=ss["Heading2"], textColor=NAVY,
+                        fontSize=12, spaceBefore=10, spaceAfter=4)
+
+    story = [
+        Paragraph("ATL Status Evidence Report", h1),
+        Paragraph(
+            f"Business: {biz.business_name if biz else '-'} "
+            f"(NTN {biz.ntn_cnic if biz else '-'}) &nbsp;•&nbsp; "
+            f"Tax Period: <b>{period}</b> &nbsp;•&nbsp; "
+            f"Generated: {_dt.now().strftime('%d %b %Y %H:%M')} "
+            f"&nbsp;•&nbsp; TaxBuddy Umair — Digital Invoicing", sub),
+        Paragraph(
+            "Sales Tax Active Taxpayer List (STATL) status of all "
+            "counterparties transacted with during the period — evidence for "
+            "further-tax and input-tax admissibility.", sub),
+    ]
+
+    def party_table(title, ptype):
+        data = [[ "#", "Name", "NTN/CNIC", "Transactions", "ATL Status",
+                  "FBR PDF", "Checked on"]]
+        style = [
+            ("BACKGROUND", (0, 0), (-1, 0), NAVY),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("GRID", (0, 0), (-1, -1), 0.5, LINE),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+             [colors.white, colors.HexColor("#F7FAF9")]),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]
+        n = 0
+        for r in rows:
+            if r["party_type"] != ptype:
+                continue
+            n += 1
+            atl = r["atl"] or "NOT CHECKED"
+            data.append([str(n), r["name"][:34], r["reg_no"] or "—",
+                         r["tx_label"], atl,
+                         "Attached" if r.get("pdf_pk") else "—",
+                         r["checked_at"].strftime("%d-%b-%Y")
+                         if r["checked_at"] else "—"])
+            ri = len(data) - 1
+            style.append(("TEXTCOLOR", (4, ri), (4, ri),
+                          GREEN if atl == "Active"
+                          else RED if atl == "Inactive" else colors.grey))
+            style.append(("FONTNAME", (4, ri), (4, ri), "Helvetica-Bold"))
+        if n == 0:
+            data.append(["", f"No {ptype.lower()} transactions this period",
+                         "", "", "", "", ""])
+        t = Table(data, colWidths=[8*mm, 48*mm, 28*mm, 30*mm, 22*mm, 20*mm, 22*mm],
+                  repeatRows=1)
+        t.setStyle(TableStyle(style))
+        return [Paragraph(title, h2), t, Spacer(1, 4)]
+
+    story += party_table("Buyers (Sales)", "Buyer")
+    story += party_table("Suppliers (Purchases)", "Supplier")
+    story.append(Spacer(1, 8))
+    story.append(Paragraph(
+        "Note: Status as recorded from FBR STATL on the check date shown. "
+        "Retain this document with the sales tax return working papers for "
+        f"period {period}.", sub))
+    doc.build(story)
+    log_event(request, "atl_pdf_saved", period=period, parties=len(rows))
+    return resp
+
+
+@login_required
+@require_POST
+def atl_evidence_upload(request):
+    """Har party ke against us month ki FBR ATL PDF save karo."""
+    from .models import ATLStatus
+    reg_no = (request.POST.get("reg_no") or "").strip()
+    period = (request.POST.get("period") or "").strip()
+    f = request.FILES.get("file")
+    if not (reg_no and period and f):
+        return JsonResponse({"ok": False, "error": "Reg no, period aur PDF file zaroori hai"}, status=400)
+    if f.size > 5 * 1024 * 1024:
+        return JsonResponse({"ok": False, "error": "PDF 5MB se bari hai"}, status=400)
+    head = f.read(5); f.seek(0)
+    if not (f.name.lower().endswith(".pdf") and head.startswith(b"%PDF")):
+        return JsonResponse({"ok": False, "error": "Sirf PDF file allowed hai"}, status=400)
+    # ---- PDF ka content parho: NTN match + status extract ----
+    def _pdf_text(fobj):
+        try:
+            from pypdf import PdfReader
+            fobj.seek(0)
+            reader = PdfReader(fobj)
+            txt = " ".join((p.extract_text() or "")
+                           for p in reader.pages[:3])
+            fobj.seek(0)
+            return txt
+        except Exception:
+            fobj.seek(0)
+            return ""
+
+    text = _pdf_text(f)
+    norm = text.lower().replace("-", "").replace(" ", "")
+    reg_digits = "".join(ch for ch in reg_no if ch.isdigit())
+
+    verified = False
+    detected = None
+    manual = request.POST.get("status", "")
+
+    if norm:
+        if reg_digits and reg_digits not in norm.replace(".", ""):
+            return JsonResponse({
+                "ok": False,
+                "error": (f"Is PDF mein reg no {reg_no} nahi mila — "
+                          "lagta hai kisi aur party ki file hai. Sahi PDF "
+                          "lagayein.")}, status=400)
+        if "inactive" in norm:
+            detected, verified = "Inactive", True
+        elif "active" in norm:
+            detected, verified = "Active", True
+
+    if not detected:
+        # Text nahi (scanned) ya status nahi mila — manual confirm lazmi
+        if manual in ("Active", "Inactive"):
+            detected = manual
+        else:
+            return JsonResponse({
+                "ok": False, "needs_status": True,
+                "error": ("PDF se status read nahi ho saka (scanned/ghair-"
+                          "standard file). Neeche status khud select karein.")},
+                status=400)
+
+    rec, _ = ATLStatus.objects.get_or_create(
+        owner=request.user, reg_no=reg_no, period=period,
+        defaults={"status": detected})
+    rec.status = detected
+    rec.verified = verified
+    if rec.evidence_pdf:
+        rec.evidence_pdf.delete(save=False)      # purani replace
+    rec.evidence_pdf.save(f"{reg_no}-{period}.pdf", f, save=True)
+    log_event(request, "atl_evidence_uploaded", reg_no=reg_no,
+              period=period, status=detected, verified=verified)
+    return JsonResponse({"ok": True, "status": detected,
+                         "verified": verified})
+
+
+@login_required
+def atl_evidence_view(request, pk):
+    """Saved ATL PDF — sirf owner dekh sakta hai (public media nahi)."""
+    from django.http import FileResponse, Http404
+    from .models import ATLStatus
+    rec = ATLStatus.objects.filter(owner=request.user, pk=pk).first()
+    if not rec or not rec.evidence_pdf:
+        raise Http404
+    return FileResponse(rec.evidence_pdf.open("rb"),
+                        content_type="application/pdf",
+                        filename=f"ATL-{rec.reg_no}-{rec.period}.pdf")
 
 
 @login_required
