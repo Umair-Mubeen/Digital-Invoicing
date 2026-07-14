@@ -152,13 +152,27 @@ class RealFBRClient:
                 },
                 timeout=self.timeout,
             )
+        except (requests.ConnectionError, requests.exceptions.ConnectTimeout) as e:
+            # Request FBR tak pahunchi hi nahi — resubmit SAFE hai
+            return self._failure(
+                "NET", f"FBR gateway unreachable: {e.__class__.__name__}",
+                transient=True)
         except requests.RequestException as e:
-            return self._failure("NET", f"FBR gateway unreachable: {e.__class__.__name__}")
+            # ReadTimeout waghaira — request shayad DELIVER ho chuki ho;
+            # blind retry duplicate invoice bana sakta hai (PRAL ke paas
+            # idempotency key/query API nahi). Manual IRIS verify.
+            return self._failure(
+                "NET_AMBIGUOUS",
+                f"Network error after send ({e.__class__.__name__}) — "
+                "IRIS portal par verify karein ke invoice ban gayi ya "
+                "nahi, phir resubmit karein", transient=False)
 
         if resp.status_code == 401:
             return self._failure("401", "Unauthorized — FBR token invalid ya expired")
         if resp.status_code >= 500:
-            return self._failure("500", "FBR Internal Server Error (Contact Administrator)")
+            return self._failure("500",
+                                 "FBR Internal Server Error (Contact Administrator)",
+                                 transient=True)
 
         try:
             return resp.json()
@@ -166,10 +180,12 @@ class RealFBRClient:
             return self._failure("BAD", "FBR returned non-JSON response")
 
     @staticmethod
-    def _failure(code, msg):
+    def _failure(code, msg, transient=False):
         return {
             "invoiceNumber": "",
             "dated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "_transient": transient,      # local flag — FBR ko nahi jata
+            "_failure_code": code,
             "validationResponse": {
                 "statusCode": "01", "status": "Invalid", "error": msg,
                 "invoiceStatuses": [{

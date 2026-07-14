@@ -90,6 +90,10 @@ class Invoice(models.Model):
 
     # FBR result
     status = models.CharField(max_length=30, choices=STATUS, default="draft")
+    # Milestone 5 — Queue & Retry (Manual v1.6 §4.2)
+    retry_count = models.PositiveSmallIntegerField(default=0)
+    next_retry_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_error = models.CharField(max_length=300, blank=True, default="")
     # NULL (not "") jab number nahi mila — MySQL unique index multiple NULLs
     # allow karta hai lekin multiple "" nahi; is liye null=True + unique=True.
     fbr_invoice_number = models.CharField(max_length=60, null=True, blank=True,

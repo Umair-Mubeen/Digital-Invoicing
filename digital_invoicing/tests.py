@@ -1455,3 +1455,111 @@ class ReferenceSyncTests(TestCase):
         out = StringIO()
         call_command("sync_fbr_reference", stdout=out)
         self.assertIn("Trans type IDs:", out.getvalue())
+
+
+class RetryQueueTests(TestCase):
+    """Milestone 5 — Queue & Retry (Manual v1.6 §4.2)."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user("m5user", password="x")
+        self.profile = SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K", use_sandbox=True)
+
+    def _payload(self):
+        return {"invoiceType": "Sale Invoice", "invoiceDate": "2026-07-01",
+                "sellerNTNCNIC": "1234567", "sellerBusinessName": "S",
+                "sellerProvince": "Sindh", "sellerAddress": "K",
+                "buyerNTNCNIC": "7654321", "buyerBusinessName": "B",
+                "buyerProvince": "Sindh", "buyerAddress": "K",
+                "buyerRegistrationType": "Registered", "scenarioId": "SN001",
+                "items": [{"hsCode": "0101.2100", "productDescription": "t",
+                           "rate": "18%", "uoM": "Numbers, pieces, units",
+                           "quantity": 1, "valueSalesExcludingST": 100,
+                           "salesTaxApplicable": 18, "furtherTax": 0,
+                           "saleType": "Goods at standard rate (default)",
+                           "sroScheduleNo": "", "sroItemSerialNo": "",
+                           "salesTaxWithheldAtSource": 0, "extraTax": "",
+                           "fedPayable": 0, "discount": 0,
+                           "fixedNotifiedValueOrRetailPrice": 0,
+                           "totalValues": 0}]}
+
+    def _mk_pending(self):
+        from django.utils import timezone
+        return Invoice.objects.create(
+            owner=self.user, seller_profile=self.profile,
+            invoice_type="Sale Invoice", invoice_date="2026-07-01",
+            buyer_business_name="B", buyer_registration_type="Registered",
+            status="pending_retry", fbr_payload=self._payload(),
+            next_retry_at=timezone.now(), retry_count=0)
+
+    def test_classify(self):
+        from .services import RetryQueueService as R
+        self.assertEqual(R.classify(
+            {"validationResponse": {"status": "Valid"}}), "valid")
+        self.assertEqual(R.classify(
+            {"_transient": True,
+             "validationResponse": {"status": "Invalid"}}), "pending_retry")
+        self.assertEqual(R.classify(
+            {"_transient": False,
+             "validationResponse": {"status": "Invalid"}}), "failed")
+
+    def test_backoff_schedule(self):
+        from django.utils import timezone
+        from .services import RetryQueueService as R
+        inv = self._mk_pending()
+        t = R.schedule(inv)
+        mins = (t - timezone.now()).total_seconds() / 60
+        self.assertAlmostEqual(mins, 5, delta=1)      # pehla backoff 5 min
+        inv.retry_count = 3
+        t = R.schedule(inv)
+        mins = (t - timezone.now()).total_seconds() / 60
+        self.assertAlmostEqual(mins, 120, delta=1)    # 4th -> 2h
+
+    def test_exhausted_attempts_fail(self):
+        from .services import RetryQueueService as R
+        inv = self._mk_pending()
+        inv.retry_count = R.MAX_ATTEMPTS
+        self.assertIsNone(R.schedule(inv))
+        inv.refresh_from_db()
+        self.assertEqual(inv.status, "failed")
+        self.assertIn("exhausted", inv.last_error)
+
+    def test_process_due_success(self):
+        # Mock client valid return karta hai -> invoice valid ho jaye
+        from .services import RetryQueueService as R
+        inv = self._mk_pending()
+        s = R.process_due()
+        self.assertEqual(s["processed"], 1)
+        self.assertEqual(s["valid"], 1)
+        inv.refresh_from_db()
+        self.assertEqual(inv.status, "valid")
+        self.assertTrue(inv.fbr_invoice_number)
+        self.assertIsNone(inv.next_retry_at)
+
+    def test_process_due_skips_future(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        from .services import RetryQueueService as R
+        inv = self._mk_pending()
+        inv.next_retry_at = timezone.now() + timedelta(hours=1)
+        inv.save()
+        s = R.process_due()
+        self.assertEqual(s["processed"], 0)
+
+    def test_ambiguous_readtimeout_not_queued(self):
+        # NET_AMBIGUOUS failure pending_retry NAHI banta (duplicate risk)
+        from .services import RetryQueueService as R
+        result = {"_transient": False, "_failure_code": "NET_AMBIGUOUS",
+                  "validationResponse": {"status": "Invalid",
+                                         "error": "verify on IRIS"}}
+        self.assertEqual(R.classify(result), "failed")
+
+    def test_management_command_runs(self):
+        from django.core.management import call_command
+        from io import StringIO
+        self._mk_pending()
+        out = StringIO()
+        call_command("retry_pending_invoices", stdout=out)
+        self.assertIn("processed=1", out.getvalue())

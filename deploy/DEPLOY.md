@@ -64,3 +64,12 @@ sirf report hote hain; admin se decide karein.
 ```cron
 15 6 * * *  cd /srv/taxbuddy-invoicing && ./venv/bin/python manage.py sync_fbr_reference --apply >> logs/ref_sync.log 2>&1
 ```
+
+## Invoice Retry Queue (Milestone 5)
+Transient failures (connection/DNS/FBR-500) auto pending_retry hote hain;
+backoff 5m/15m/45m/2h/6h, max 5 attempts. Read-timeout AMBIGUOUS hai —
+auto-retry nahi hota (duplicate risk); IRIS par verify kar ke manual resubmit.
+
+```cron
+*/5 * * * *  cd /srv/taxbuddy-invoicing && ./venv/bin/python manage.py retry_pending_invoices >> logs/retry.log 2>&1
+```

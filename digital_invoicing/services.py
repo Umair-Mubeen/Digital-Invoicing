@@ -180,6 +180,7 @@ class InvoicePersistenceService:
         total_value, total_st, total_ft, invoice_total = totals
         vr = result.get("validationResponse", {})
         valid = vr.get("status") == "Valid"
+        status = RetryQueueService.classify(result)
 
         inv = Invoice.objects.create(
             owner=user,
@@ -203,7 +204,8 @@ class InvoicePersistenceService:
             total_sales_tax=total_st,
             total_further_tax=total_ft,
             invoice_total=invoice_total,
-            status="valid" if valid else "failed",
+            status=status,
+            last_error="" if valid else (vr.get("error", "")[:300]),
             fbr_invoice_number=result.get("invoiceNumber") or None,
             fbr_dated=result.get("dated", ""),
             fbr_payload=payload,
@@ -231,6 +233,8 @@ class InvoicePersistenceService:
                 total_values=it.get("totalValues", 0) or 0,
                 sro_item_serial_no=it.get("sroItemSerialNo", "") or "",
             )
+        if status == "pending_retry":
+            RetryQueueService.schedule(inv)
         return inv, valid
 
 
@@ -405,6 +409,100 @@ class InvoiceValidationService:
         }
 
 
+# --------------------------------------------------------------------------
+class RetryQueueService:
+    """Milestone 5 — Queue & Retry (Manual v1.6 §4.2: FBR side koi auto-retry
+    nahi; resubmission ERP ki zimmedari hai). DB-backed queue — Celery/broker
+    ki dependency nahi (single-VPS deploy friendly); cron har 5 min
+    `retry_pending_invoices` chalata hai.
+
+    Failure classification (fbr_client._failure ke _transient flag se):
+      - transient (connection refused/DNS = request DELIVER nahi hui; FBR 500)
+          -> status pending_retry + exponential backoff
+      - ambiguous (read-timeout = request shayad deliver ho gayi)
+          -> status failed + manual IRIS-verify message; AUTO-RETRY NAHI
+             (PRAL ke paas idempotency key/query API nahi — blind retry
+             duplicate invoice bana sakta hai). ASSUMPTION stated.
+      - validation reject -> failed (retry bekaar, data fix chahiye)
+    """
+
+    BACKOFF_MINUTES = [5, 15, 45, 120, 360]   # max 5 attempts
+    MAX_ATTEMPTS = len(BACKOFF_MINUTES)
+
+    @staticmethod
+    def classify(result):
+        """FBR result -> invoice status."""
+        vr = result.get("validationResponse", {})
+        if vr.get("status") == "Valid":
+            return "valid"
+        if result.get("_transient"):
+            return "pending_retry"
+        return "failed"
+
+    @classmethod
+    def schedule(cls, inv):
+        """Agli koshish ka waqt set karo; attempts khatam to failed."""
+        if inv.retry_count >= cls.MAX_ATTEMPTS:
+            inv.status = "failed"
+            inv.next_retry_at = None
+            inv.last_error = (inv.last_error or
+                              "")[:240] + " [retry attempts exhausted]"
+            inv.save(update_fields=["status", "next_retry_at", "last_error"])
+            return None
+        delay = cls.BACKOFF_MINUTES[inv.retry_count]
+        inv.next_retry_at = timezone.now() + timedelta(minutes=delay)
+        inv.save(update_fields=["next_retry_at"])
+        return inv.next_retry_at
+
+    @classmethod
+    def process_due(cls, now=None, limit=50):
+        """Cron entrypoint: due pending_retry invoices resubmit karo.
+        Returns summary dict."""
+        now = now or timezone.now()
+        due = (Invoice.objects.filter(status="pending_retry",
+                                      next_retry_at__lte=now)
+               .order_by("next_retry_at")[:limit])
+        summary = {"processed": 0, "valid": 0, "rescheduled": 0, "failed": 0}
+        for inv in due:
+            summary["processed"] += 1
+            if not inv.fbr_payload:
+                inv.status = "failed"
+                inv.last_error = "Original payload was not saved"
+                inv.save(update_fields=["status", "last_error"])
+                summary["failed"] += 1
+                continue
+            profile = inv.seller_profile
+            result = get_fbr_client(profile).post_invoice(
+                dict(inv.fbr_payload))
+            vr = result.get("validationResponse", {})
+            status = cls.classify(result)
+            inv.retry_count += 1
+            inv.fbr_response = result
+            inv.last_error = "" if status == "valid" else vr.get("error", "")[:300]
+            if status == "valid":
+                inv.status = "valid"
+                inv.fbr_invoice_number = result.get("invoiceNumber") or None
+                inv.fbr_dated = result.get("dated", "")
+                inv.submitted_at = timezone.now()
+                inv.next_retry_at = None
+                inv.save()
+                AutoLearnService.learn(inv.owner, inv.fbr_payload,
+                                       inv.fbr_payload.get("items", []))
+                summary["valid"] += 1
+            elif status == "pending_retry":
+                inv.save()
+                if cls.schedule(inv):
+                    summary["rescheduled"] += 1
+                else:
+                    summary["failed"] += 1
+            else:                       # validation reject ya ambiguous
+                inv.status = "failed"
+                inv.next_retry_at = None
+                inv.save()
+                summary["failed"] += 1
+        return summary
+
+
 class InvoiceResubmissionService:
     """Manual v1.6 §4.2: connection loss/failure par resubmission lazmi —
     system automatic retry nahi karta, user one-click resubmit karta hai.
@@ -417,9 +515,10 @@ class InvoiceResubmissionService:
         inv = Invoice.objects.filter(owner=self.user, pk=invoice_pk).first()
         if not inv:
             raise SubmissionError("Invoice not found", simple=True)
-        if inv.status != "failed":
+        if inv.status not in ("failed", "pending_retry"):
             raise SubmissionError(
-                "Only failed invoices can be resubmitted", simple=True)
+                "Only failed or pending-retry invoices can be resubmitted",
+                simple=True)
         if not inv.fbr_payload:
             raise SubmissionError("Original payload was not saved", simple=True)
 
@@ -429,13 +528,18 @@ class InvoiceResubmissionService:
         vr = result.get("validationResponse", {})
         valid = vr.get("status") == "Valid"
 
-        inv.status = "valid" if valid else "failed"
+        status = RetryQueueService.classify(result)
+        inv.status = status
+        inv.last_error = "" if valid else vr.get("error", "")[:300]
         inv.fbr_invoice_number = result.get("invoiceNumber") or None
         inv.fbr_dated = result.get("dated", "")
         inv.fbr_response = result
         if valid:
             inv.submitted_at = timezone.now()
+            inv.next_retry_at = None
         inv.save()
+        if status == "pending_retry":
+            RetryQueueService.schedule(inv)
 
         if valid:
             AutoLearnService.learn(self.user, inv.fbr_payload,
