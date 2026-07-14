@@ -13,7 +13,7 @@ from django.contrib.auth import get_user_model
 from .tax_engine import compute_item
 from .validators import validate_invoice
 from .fbr_client import get_fbr_client, MockFBRClient, RealFBRClient
-from .models import SellerProfile, Buyer
+from .models import SellerProfile, Buyer, Invoice, InvoiceItem
 
 
 class TaxEngineTests(TestCase):
@@ -303,9 +303,10 @@ class TaxRuleTableTests(TestCase):
 
     def test_seeded_rules_match_hardcoded_parity(self):
         from .models import TaxSaleType, TaxScenario, FurtherTaxExemptHS
+        # Milestone 1: 24 official PRAL sale types (Scenarios doc v1.11)
         self.assertEqual(
             TaxSaleType.objects.filter(is_active=True).values("name")
-            .distinct().count(), 6)
+            .distinct().count(), 24)
         self.assertEqual(TaxScenario.objects.count(), 28)
         self.assertTrue(FurtherTaxExemptHS.objects
                         .filter(hs_prefix="3102").exists())
@@ -317,7 +318,7 @@ class TaxRuleTableTests(TestCase):
         from datetime import date
         from .models import TaxSaleType
         from .tax_engine import invalidate_rules_cache
-        row = TaxSaleType.objects.get(name="Goods at standard rate")
+        row = TaxSaleType.objects.get(name="Goods at standard rate (default)")
         row.rate = Decimal("19")
         row.save()
         invalidate_rules_cache()
@@ -333,7 +334,7 @@ class TaxRuleTableTests(TestCase):
         from .tax_engine import invalidate_rules_cache, load_rules
         future = date.today() + timedelta(days=30)
         TaxSaleType.objects.create(
-            name="Goods at standard rate", rate=Decimal("20"),
+            name="Goods at standard rate (default)", rate=Decimal("20"),
             charges_st=True, further_tax_applies=True,
             effective_from=future)
         invalidate_rules_cache()
@@ -1043,3 +1044,414 @@ class ATLPDFParsingTests(TestCase):
         rec = ATLStatus.objects.get(owner=self.user, reg_no="7654321")
         self.assertEqual(rec.status, "Inactive")
         self.assertFalse(rec.verified)          # manual — verified nahi
+
+
+class PRALScenarioTaxTests(TestCase):
+    """Milestone 1 — SN001-SN028 math, PRAL Scenarios doc v1.11 ke sample
+    JSON se directly verify (page refs comments mein)."""
+
+    def test_sn001_standard_rate(self):                     # p.3-4: 18% of 1000 = 180
+        r = compute_item("Goods at standard rate (default)", 1000)
+        self.assertEqual(r["sales_tax"], Decimal("180.00"))
+
+    def test_sn005_reduced_rate_1pct(self):                 # p.11-12: 1% of 1000 = 10
+        r = compute_item("Goods at Reduced Rate", 1000)
+        self.assertEqual(r["sales_tax"], Decimal("10.00"))
+        self.assertEqual(r["sro_schedule"], "EIGHTH SCHEDULE Table 1")
+
+    def test_sn006_exempt(self):                            # p.13: rate "Exempt"
+        r = compute_item("Exempt goods", 1000)
+        self.assertEqual(r["sales_tax"], Decimal("0.00"))
+        self.assertEqual(r["rate"], "Exempt")
+
+    def test_sn008_third_schedule_mrp(self):                # p.17-18: 18% of MRP 1000 = 180
+        r = compute_item("3rd Schedule Goods", 0, retail_price=1000)
+        self.assertEqual(r["sales_tax"], Decimal("180.00"))
+
+    def test_sn010_telecom_17pct(self):                     # p.21: 17%
+        r = compute_item("Telecommunication services", 1000)
+        self.assertEqual(r["sales_tax"], Decimal("170.00"))
+
+    def test_sn012_petroleum(self):                         # p.25-26: 1.43% of 100 = 1.43
+        r = compute_item("Petroleum Products", 100)
+        self.assertEqual(r["sales_tax"], Decimal("1.43"))
+        self.assertEqual(r["sro_schedule"], "1450(I)/2021")
+        self.assertEqual(r["sro_item"], "4")
+
+    def test_sn013_electricity_5pct(self):                  # p.27-28: 5% of 1000 = 50
+        r = compute_item("Electricity Supply to Retailers", 1000)
+        self.assertEqual(r["sales_tax"], Decimal("50.00"))
+
+    def test_sn017_fed_in_st_mode(self):                    # p.35-36: 8% of 100 = 8
+        r = compute_item("Goods (FED in ST Mode)", 100)
+        self.assertEqual(r["sales_tax"], Decimal("8.00"))
+
+    def test_sn021_cement_fixed_per_unit(self):             # p.43-44: 12 x Rs.3 = 36
+        r = compute_item("Cement /Concrete Block", 123, quantity=12)
+        self.assertEqual(r["sales_tax"], Decimal("36.00"))
+        self.assertEqual(r["rate"], "Rs.3")
+
+    def test_sn022_potassium_chlorate_compound(self):       # p.45-46: 100x18% + 1x60 = 78
+        r = compute_item("Potassium Chlorate", 100, quantity=1)
+        self.assertEqual(r["sales_tax"], Decimal("78.00"))
+        self.assertEqual(r["rate"], "18% along with rupees 60 per kilogram")
+
+    def test_sn023_cng_fixed_per_unit(self):                # p.47-48: 123 x Rs.200 = 24600
+        r = compute_item("CNG Sales", 234, quantity=123)
+        self.assertEqual(r["sales_tax"], Decimal("24600.00"))
+        self.assertEqual(r["rate"], "Rs.200")
+
+    def test_sn024_sro297_25pct(self):                      # p.49: 25%
+        r = compute_item("Goods as per SRO.297(|)/2023", 1000)
+        self.assertEqual(r["sales_tax"], Decimal("250.00"))
+
+    def test_sn025_non_adjustable_0pct(self):               # p.51-52: 0%
+        r = compute_item("Non-Adjustable Supplies", 100)
+        self.assertEqual(r["sales_tax"], Decimal("0.00"))
+
+    def test_legacy_aliases_still_work(self):
+        # Purane stored labels (SavedItems/Products) na tootein
+        for old, new in [("Goods at standard rate", "Goods at standard rate (default)"),
+                         ("Exempt Goods", "Exempt goods"),
+                         ("Zero-rated Goods", "Goods at zero-rate"),
+                         ("Goods at reduced rate", "Goods at Reduced Rate")]:
+            r = compute_item(old, 1000)
+            self.assertEqual(r["sale_type"], new)
+
+    def test_all_28_scenarios_seeded(self):
+        from .models import TaxScenario
+        self.assertEqual(TaxScenario.objects.count(), 28)
+        self.assertEqual(TaxScenario.objects.get(code="SN002").description,
+                         "Sale of Standard Rate Goods to Unregistered Buyers")
+
+    def test_all_24_sale_types_seeded_and_computable(self):
+        from .models import TaxSaleType
+        from .tax_engine import SALE_TYPES as ENGINE_TYPES
+        db_names = set(TaxSaleType.objects.values_list("name", flat=True))
+        for name in ENGINE_TYPES:
+            self.assertIn(name, db_names)
+            compute_item(name, 100, quantity=2)   # koi crash na ho
+
+    def test_further_tax_only_on_general_goods(self):
+        # Sector types pe FT auto nahi (stated assumption — admin enable kare)
+        r = compute_item("Petroleum Products", 1000, buyer_unregistered=True,
+                         hs_code="9999.0000")
+        self.assertEqual(r["further_tax"], Decimal("0.00"))
+        r = compute_item("Goods at standard rate (default)", 1000,
+                         buyer_unregistered=True, hs_code="9999.0000")
+        self.assertEqual(r["further_tax"], Decimal("40.00"))
+
+
+class ErrorCodeMilestone2Tests(TestCase):
+    """Milestone 2 — naye official error codes (Error Message Guide, Sales)."""
+
+    def _base_item(self, **kw):
+        d = {"hsCode": "0101.2100", "productDescription": "t", "rate": "18%",
+             "uoM": "Numbers, pieces, units", "quantity": 1, "totalValues": 0,
+             "valueSalesExcludingST": 100, "fixedNotifiedValueOrRetailPrice": 0,
+             "salesTaxApplicable": 18, "salesTaxWithheldAtSource": 0,
+             "extraTax": "", "furtherTax": 0, "sroScheduleNo": "",
+             "fedPayable": 0, "discount": 0,
+             "saleType": "Goods at standard rate (default)",
+             "sroItemSerialNo": ""}
+        d.update(kw)
+        return d
+
+    def _base(self, **item_kw):
+        return {"invoiceType": "Sale Invoice", "invoiceDate": "2026-07-01",
+                "sellerNTNCNIC": "1234567", "sellerBusinessName": "S",
+                "sellerProvince": "Sindh", "sellerAddress": "K",
+                "buyerNTNCNIC": "7654321", "buyerBusinessName": "B",
+                "buyerProvince": "Sindh", "buyerAddress": "K",
+                "buyerRegistrationType": "Registered", "invoiceRefNo": "",
+                "scenarioId": "SN001", "items": [self._base_item(**item_kw)]}
+
+    def _codes(self, payload):
+        from .validators import validate_invoice
+        return {e["errorCode"] for e in validate_invoice(payload)}
+
+    def test_0007_invalid_sale_type(self):
+        self.assertIn("0007", self._codes(self._base(saleType="Bogus Type")))
+
+    def test_0019_hs_format(self):
+        self.assertIn("0019", self._codes(self._base(hsCode="ABCD")))
+        self.assertNotIn("0019", self._codes(self._base(hsCode="0101.2100")))
+
+    def test_0022_0050_cotton_ginners_stwh(self):
+        p = self._base(saleType="Cotton ginners",
+                       salesTaxWithheldAtSource=None)
+        self.assertIn("0022", self._codes(p))
+        p = self._base(saleType="Cotton ginners", salesTaxApplicable=18,
+                       salesTaxWithheldAtSource=5)   # na zero na ST ke barabar
+        self.assertIn("0050", self._codes(p))
+        p = self._base(saleType="Cotton ginners", salesTaxApplicable=18,
+                       salesTaxWithheldAtSource=18)  # ST ke barabar — theek
+        self.assertNotIn("0050", self._codes(p))
+
+    def test_0046_rate_mismatch(self):
+        self.assertIn("0046", self._codes(self._base(rate="17%")))
+        self.assertNotIn("0046", self._codes(self._base(rate="18%")))
+
+    def test_0062_steel_uom_mt(self):
+        p = self._base(saleType="Steel melting and re-rolling", uoM="KG")
+        self.assertIn("0062", self._codes(p))
+        p = self._base(saleType="Steel melting and re-rolling", uoM="MT")
+        self.assertNotIn("0062", self._codes(p))
+
+    def test_0097_potassium_chlorate_uom_kg(self):
+        p = self._base(saleType="Potassium Chlorate", uoM="MT",
+                       rate="18% along with rupees 60 per kilogram",
+                       salesTaxApplicable=78, quantity=1,
+                       sroScheduleNo="EIGHTH SCHEDULE Table 1",
+                       sroItemSerialNo="56")
+        self.assertIn("0097", self._codes(p))
+
+    def test_0103_potassium_chlorate_st_math(self):
+        p = self._base(saleType="Potassium Chlorate", uoM="KG",
+                       rate="18% along with rupees 60 per kilogram",
+                       valueSalesExcludingST=100, quantity=1,
+                       salesTaxApplicable=50,      # sahi: 78
+                       sroScheduleNo="EIGHTH SCHEDULE Table 1",
+                       sroItemSerialNo="56")
+        self.assertIn("0103", self._codes(p))
+        p["items"][0]["salesTaxApplicable"] = 78
+        self.assertNotIn("0103", self._codes(p))
+
+    def test_0105_fixed_per_unit_st_math(self):
+        p = self._base(saleType="Cement /Concrete Block", rate="Rs.3",
+                       quantity=12, salesTaxApplicable=30)   # sahi: 36
+        self.assertIn("0105", self._codes(p))
+        p["items"][0]["salesTaxApplicable"] = 36
+        self.assertNotIn("0105", self._codes(p))
+
+    def test_0078_sro_item_serial_required(self):
+        p = self._base(rate="1%", saleType="Goods at Reduced Rate",
+                       salesTaxApplicable=1,
+                       sroScheduleNo="EIGHTH SCHEDULE Table 1",
+                       sroItemSerialNo="")
+        self.assertIn("0078", self._codes(p))
+
+    def test_official_labels_trigger_quantity_check(self):
+        # Milestone 1 label fix ke baad 0098 official label pe fire ho
+        p = self._base(quantity=0)
+        self.assertIn("0098", self._codes(p))
+
+    def test_legacy_label_still_validates(self):
+        p = self._base(saleType="Goods at standard rate")   # alias
+        self.assertNotIn("0007", self._codes(p))
+
+
+class CancellationWorkflowTests(TestCase):
+    """Milestone 3 — Manual v1.6 §4.1 cancellation/edit rules."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from django.utils import timezone
+        self.user = User.objects.create_user("m3user", password="x")
+        self.profile = SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K")
+        # last month sales = 100,000 -> 10% limit = 10,000
+        from datetime import date, timedelta
+        today = date.today()
+        prev = (today.replace(day=1) - timedelta(days=1))
+        self.old_inv = Invoice.objects.create(
+            owner=self.user, seller_profile=self.profile,
+            invoice_type="Sale Invoice", invoice_date=prev,
+            buyer_business_name="B", buyer_registration_type="Registered",
+            total_value=100000, invoice_total=100000, status="valid",
+            submitted_at=timezone.now() - timedelta(days=35))
+
+    def _mk_invoice(self, items=2, value=1000):
+        from django.utils import timezone
+        from datetime import date
+        inv = Invoice.objects.create(
+            owner=self.user, seller_profile=self.profile,
+            invoice_type="Sale Invoice", invoice_date=date.today(),
+            buyer_business_name="B", buyer_registration_type="Registered",
+            total_value=value * items, invoice_total=value * items,
+            status="valid", submitted_at=timezone.now())
+        for _ in range(items):
+            InvoiceItem.objects.create(
+                invoice=inv, hs_code="0101.2100", product_description="t",
+                sale_type="Goods at standard rate (default)",
+                quantity=1, value_excl_st=value,
+                sales_tax=Decimal(value) * Decimal("0.18"), rate="18%")
+        return inv
+
+    def _svc(self):
+        from .services import InvoiceCancellationService
+        return InvoiceCancellationService(self.user)
+
+    def test_full_cancel_marks_items_and_status(self):
+        inv = self._mk_invoice()
+        r = self._svc().mark_cancelled(inv.pk)
+        inv.refresh_from_db()
+        self.assertEqual(inv.status, "cancelled")
+        self.assertEqual(r["status"], "cancelled")
+        self.assertEqual(inv.items.filter(item_status="cancelled").count(), 2)
+
+    def test_item_cancel_sets_partially_cancelled(self):
+        inv = self._mk_invoice()
+        it = inv.items.first()
+        self._svc().cancel_item(inv.pk, it.pk)
+        inv.refresh_from_db()
+        self.assertEqual(inv.status, "partially_cancelled")
+
+    def test_edit_item_snapshot_and_recompute(self):
+        inv = self._mk_invoice()
+        it = inv.items.first()
+        self._svc().edit_item(inv.pk, it.pk, {"value_excl_st": 500})
+        it.refresh_from_db()
+        self.assertEqual(it.item_status, "edited")
+        self.assertEqual(it.sales_tax, Decimal("90.00"))     # engine recompute
+        self.assertEqual(it.original_snapshot["value_excl_st"], "1000.00")
+        inv.refresh_from_db()
+        self.assertEqual(inv.status, "partially_edited")
+
+    def test_edit_only_once(self):
+        from .services import SubmissionError
+        inv = self._mk_invoice()
+        it = inv.items.first()
+        self._svc().edit_item(inv.pk, it.pk, {"value_excl_st": 500})
+        with self.assertRaises(SubmissionError):
+            self._svc().edit_item(inv.pk, it.pk, {"value_excl_st": 700})
+
+    def test_edited_item_cannot_be_cancelled(self):
+        from .services import SubmissionError
+        inv = self._mk_invoice()
+        it = inv.items.first()
+        self._svc().edit_item(inv.pk, it.pk, {"value_excl_st": 500})
+        with self.assertRaises(SubmissionError):
+            self._svc().cancel_item(inv.pk, it.pk)
+
+    def test_invoice_with_edited_item_cannot_full_cancel(self):
+        from .services import SubmissionError
+        inv = self._mk_invoice()
+        self._svc().edit_item(inv.pk, inv.items.first().pk,
+                              {"value_excl_st": 500})
+        with self.assertRaises(SubmissionError):
+            self._svc().mark_cancelled(inv.pk)
+
+    def test_10pct_limit_enforced(self):
+        from .services import SubmissionError
+        # limit = 10,000; invoice items total = 2 x (11000+1980) > limit
+        inv = self._mk_invoice(items=2, value=11000)
+        with self.assertRaises(SubmissionError) as cm:
+            self._svc().mark_cancelled(inv.pk)
+        self.assertIn("10%", cm.exception.message)
+
+    def test_window_locked_after_72h(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        from .services import SubmissionError
+        inv = self._mk_invoice()
+        inv.submitted_at = timezone.now() - timedelta(hours=73)
+        inv.save()
+        with self.assertRaises(SubmissionError):
+            self._svc().mark_cancelled(inv.pk)
+
+    def test_month_end_lock(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        inv = self._mk_invoice()
+        # 10 ghante purani lekin pichhle mahine ki — month-end lock
+        inv.submitted_at = (timezone.now().replace(day=1)
+                            - timedelta(hours=10))
+        inv.save()
+        if timezone.now().day == 1:      # edge: aaj 1 tareekh
+            self.skipTest("month boundary edge")
+        self.assertTrue(inv.is_locked)
+
+    def test_partially_edited_and_cancelled_status(self):
+        inv = self._mk_invoice(items=3)
+        ids = list(inv.items.values_list("pk", flat=True))
+        self._svc().edit_item(inv.pk, ids[0], {"value_excl_st": 500})
+        self._svc().cancel_item(inv.pk, ids[1])
+        inv.refresh_from_db()
+        self.assertEqual(inv.status, "partially_edited_cancelled")
+
+    def test_eligibility_endpoint_shape(self):
+        inv = self._mk_invoice()
+        e = self._svc().eligibility(inv.pk)
+        self.assertTrue(e["windowOpen"])
+        self.assertTrue(e["fullCancelAllowed"])
+        self.assertEqual(len(e["items"]), 2)
+        self.assertEqual(e["limit"], "10000.00")
+
+
+class ReferenceSyncTests(TestCase):
+    """Milestone 4 — transtypecode + SaleTypeToRate sync (mock-driven)."""
+
+    def _svc(self):
+        from .reference_data import ReferenceSyncService, MockReferenceClient
+        return ReferenceSyncService(client=MockReferenceClient())
+
+    def test_trans_type_ids_synced(self):
+        from .models import TaxSaleType
+        r = self._svc().sync_trans_type_ids()
+        self.assertIn(("Goods at standard rate (default)", 75), r["matched"])
+        row = TaxSaleType.objects.filter(
+            name="Goods at standard rate (default)").first()
+        self.assertEqual(row.fbr_trans_type_id, 75)
+        # Mock mein sirf 7 types — baqi unmatched report hon, crash na ho
+        self.assertIn("Petroleum Products", r["unmatched"])
+
+    def test_no_drift_when_rates_match(self):
+        svc = self._svc()
+        svc.sync_trans_type_ids()
+        report = svc.check_rate_drift()
+        std = next(d for d in report
+                   if d["sale_type"] == "Goods at standard rate (default)")
+        self.assertFalse(std["drift"])          # ours 18% == FBR 18%
+
+    def test_drift_detected_and_applied_single_rate(self):
+        from decimal import Decimal as D
+        from .models import TaxSaleType
+        from .tax_engine import invalidate_rules_cache, compute_item
+        svc = self._svc()
+        svc.sync_trans_type_ids()
+        # Standard rate ko jaan boojh kar 17% kar do -> FBR 18% se drift
+        TaxSaleType.objects.filter(
+            name="Goods at standard rate (default)").update(rate=D("17"))
+        invalidate_rules_cache()
+        report = svc.check_rate_drift()
+        std = next(d for d in report
+                   if d["sale_type"] == "Goods at standard rate (default)")
+        self.assertTrue(std["drift"])
+        self.assertTrue(std["auto_applicable"])   # FBR single rate
+        applied = svc.apply_rate_updates(report)
+        self.assertIn("Goods at standard rate (default)", applied)
+        # Nayi date-effective row + engine ab 18% compute kare
+        rows = TaxSaleType.objects.filter(
+            name="Goods at standard rate (default)").order_by("effective_from")
+        self.assertEqual(rows.count(), 2)
+        self.assertIsNotNone(rows.first().effective_to)   # purani closed
+        invalidate_rules_cache()
+        r = compute_item("Goods at standard rate (default)", 1000)
+        self.assertEqual(r["sales_tax"], Decimal("180.00"))
+
+    def test_multi_rate_never_auto_applied(self):
+        from decimal import Decimal as D
+        from .models import TaxSaleType
+        from .tax_engine import invalidate_rules_cache
+        svc = self._svc()
+        svc.sync_trans_type_ids()
+        # Reduced rate ko 3% kar do -> FBR ["1%","5%"] se drift, multi-rate
+        TaxSaleType.objects.filter(
+            name="Goods at Reduced Rate").update(rate=D("3"), rate_label="")
+        invalidate_rules_cache()
+        report = svc.check_rate_drift()
+        red = next(d for d in report
+                   if d["sale_type"] == "Goods at Reduced Rate")
+        self.assertTrue(red["drift"])
+        self.assertFalse(red["auto_applicable"])
+        applied = svc.apply_rate_updates(report)
+        self.assertNotIn("Goods at Reduced Rate", applied)
+
+    def test_management_command_runs(self):
+        from django.core.management import call_command
+        from io import StringIO
+        out = StringIO()
+        call_command("sync_fbr_reference", stdout=out)
+        self.assertIn("Trans type IDs:", out.getvalue())

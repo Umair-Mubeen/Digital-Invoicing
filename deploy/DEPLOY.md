@@ -54,3 +54,13 @@
     [ ] Sandbox scenarios PRAL certification pass (Manual v1.6 §4.1)
     [ ] FBR_USE_MOCK=0 sirf certification ke BAAD
     [ ] Backup cron test-restore verified
+
+## FBR Reference Sync (Milestone 4)
+Rozana FBR ke transaction types + rates ke saath sync (Tech Spec §5.5/§5.8).
+Unambiguous rate changes date-effective rows ke zariye apply hote hain —
+purana data kabhi delete nahi hota. Multi-rate types (e.g. Eighth Schedule)
+sirf report hote hain; admin se decide karein.
+
+```cron
+15 6 * * *  cd /srv/taxbuddy-invoicing && ./venv/bin/python manage.py sync_fbr_reference --apply >> logs/ref_sync.log 2>&1
+```

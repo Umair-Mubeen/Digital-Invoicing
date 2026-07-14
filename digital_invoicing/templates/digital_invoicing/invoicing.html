@@ -111,16 +111,7 @@
         <div class="field"><label>Invoice Date <span class="req">*</span></label>
           <input type="date" id="invoiceDate"></div>
         <div class="field"><label>Scenario ID (sandbox)</label>
-          <select id="scenarioId">
-            <option value="SN001">SN001 — Standard rate goods</option>
-            <option value="SN002">SN002 — Registered buyer</option>
-            <option value="SN005">SN005 — Reduced rate</option>
-            <option value="SN006">SN006 — Exempt goods</option>
-            <option value="SN007">SN007 — Zero-rated</option>
-            <option value="SN008">SN008 — 3rd Schedule</option>
-            <option value="SN017">SN017 — FED in ST mode</option>
-            <option value="SN018">SN018 — Services</option>
-          </select></div>
+          <select id="scenarioId"><!-- SN001-SN028: JS se populate (TAX_CFG.scenarios) --></select></div>
       </div>
       <div class="grid g3" style="margin-top:14px" id="dnWrap" hidden>
         <div class="field"><label>Invoice Reference No. <span class="req">*</span></label>
@@ -313,7 +304,7 @@ function renderSavedChips(){
     chip.onmouseover=()=>chip.style.background='#E4EDF6';
     chip.onmouseout=()=>chip.style.background='#F2F6FA';
     chip.onclick=()=>{
-      addRow({hsCode:it.hs, desc:it.desc, saleType:(SALE_TYPES[it.st]?it.st:'Goods at standard rate'),
+      addRow({hsCode:it.hs, desc:it.desc, saleType:(SALE_TYPES[it.st]?it.st:DEFAULT_SALE_TYPE),
               uoM:it.uom, value:it.val||0});
       toast(`Added: ${it.desc}`);
     };
@@ -365,14 +356,37 @@ function getCookie(name){
 /* Phase 7: rules server (DB rule tables) se aate hain — admin change = UI change */
 const TAX_CFG = {{ tax_cfg|default:"null"|safe }};
 const SALE_TYPES = (TAX_CFG && Object.fromEntries(Object.entries(TAX_CFG.saleTypes).map(
-  ([n,c])=>[n,{rate:c.rate,further:c.further,sro:c.sro,st:c.st,retail:c.retail}]))) || {
-  "Goods at standard rate": {rate:18, further:true,  sro:"",        st:true},
-  "Goods at reduced rate":  {rate:5,  further:true,  sro:"8th Sch", st:true},
-  "3rd Schedule Goods":     {rate:18, further:false, sro:"3rd Sch", st:true, retail:true},
-  "Exempt Goods":           {rate:0,  further:false, sro:"6th Sch", st:false},
-  "Zero-rated Goods":       {rate:0,  further:false, sro:"5th Sch", st:true},
-  "Services":               {rate:15, further:false, sro:"",        st:true},
+  ([n,c])=>[n,{rate:c.rate,further:c.further,sro:c.sro,st:c.st,retail:c.retail,
+               rateType:c.rateType||'percent',perUnit:c.perUnit||0,label:c.label||'',
+               sroItem:c.sroItem||''}]))) || {
+  "Goods at standard rate (default)": {rate:18, further:true,  sro:"",        st:true, rateType:'percent', perUnit:0, label:''},
+  "Goods at Reduced Rate":  {rate:1,  further:true,  sro:"8th Sch", st:true, rateType:'percent', perUnit:0, label:''},
+  "3rd Schedule Goods":     {rate:18, further:false, sro:"3rd Sch", st:true, retail:true, rateType:'percent', perUnit:0, label:''},
+  "Exempt goods":           {rate:0,  further:false, sro:"6th Sch", st:false, rateType:'exempt', perUnit:0, label:'Exempt'},
+  "Goods at zero-rate":     {rate:0,  further:false, sro:"5th Sch", st:true, rateType:'percent', perUnit:0, label:'0%'},
+  "Services":               {rate:5,  further:false, sro:"",        st:true, rateType:'percent', perUnit:0, label:''},
 };
+const DEFAULT_SALE_TYPE = SALE_TYPES["Goods at standard rate (default)"]
+  ? "Goods at standard rate (default)" : Object.keys(SALE_TYPES)[0];
+/* SN001-SN028 dropdown (PRAL Scenarios doc v1.11) + scenario->saleType sync */
+const SCENARIOS = (TAX_CFG && TAX_CFG.scenarios) || [];
+(function(){
+  const sel = document.getElementById('scenarioId');
+  if(!sel || !SCENARIOS.length) return;
+  sel.innerHTML = SCENARIOS.map(s=>
+    `<option value="${s.code}">${s.code} — ${s.desc}</option>`).join('');
+  sel.addEventListener('change', ()=>{
+    const sc = SCENARIOS.find(s=>s.code===sel.value);
+    if(sc && SALE_TYPES[sc.saleType] && items.length===1 && !(+items[0].value)){
+      items[0].saleType = sc.saleType; render();   // khali pehli row hi badlo
+    }
+  });
+})();
+function rateText(cfg){
+  if(cfg.label) return cfg.label;
+  if(cfg.rateType==='fixed_per_unit') return 'Rs.'+cfg.perUnit;
+  return cfg.rate+'%';
+}
 const FURTHER_TAX_RATE = (TAX_CFG && TAX_CFG.furtherRate) || 4;
 const FT_EXEMPT_HS = (TAX_CFG && TAX_CFG.ftExemptHS) || [
   "3102","3103","3104","3105","2710","2711","8703","8704","8711","1001","1006","1101","0401","0402","3004"
@@ -382,7 +396,7 @@ let items = [];
 
 function addRow(preset){
   items.push(Object.assign({id:Date.now()+Math.random(), hsCode:"", desc:"",
-    saleType:"Goods at standard rate", qty:1, value:0, mrp:0,
+    saleType:DEFAULT_SALE_TYPE, qty:1, value:0, mrp:0,
     uoM:"Numbers, pieces, units"}, preset||{}));
   render();
 }
@@ -390,12 +404,19 @@ function rm(id){items=items.filter(x=>x.id!==id); render();}
 
 function calcItem(it){
   const cfg=SALE_TYPES[it.saleType], value=(+it.value)||0;
-  const mrp=(+it.mrp)||0;
+  const mrp=(+it.mrp)||0, qty=(+it.qty)||1;
   const stBase = cfg.retail ? (mrp>0?mrp:value) : value;
-  const st=cfg.st?stBase*cfg.rate/100:0;
+  /* PRAL rate semantics: percent | fixed_per_unit (qty x Rs.X) |
+     compound (base x % + qty x Rs.X) | exempt */
+  let st = 0;
+  if(cfg.st && cfg.rateType!=='exempt'){
+    if(cfg.rateType==='fixed_per_unit')      st = qty*cfg.perUnit;
+    else if(cfg.rateType==='compound')       st = stBase*cfg.rate/100 + qty*cfg.perUnit;
+    else                                     st = stBase*cfg.rate/100;
+  }
   const unreg=document.getElementById('buyerRegistrationType').value==='Unregistered';
   const ft=(cfg.further&&unreg&&!ftExemptHS(it.hsCode))?value*FURTHER_TAX_RATE/100:0;
-  return {rate:cfg.rate, st, ft, sro:cfg.sro, total:value+st+ft};
+  return {rate:rateText(cfg), st, ft, sro:cfg.sro, total:value+st+ft};
 }
 
 /* Light update: typing par table re-render nahi hota — focus safe */
@@ -408,7 +429,7 @@ function upd(id,k,v){
 function updateCalcRow(it){
   const tr=document.querySelector(`tr[data-id="${it.id}"]`); if(!tr)return;
   const c=calcItem(it);
-  tr.querySelector('.c-rate').textContent = c.rate+'%';
+  tr.querySelector('.c-rate').textContent = c.rate;
   tr.querySelector('.c-st').textContent  = fmt(c.st);
   tr.querySelector('.c-ft').textContent  = fmt(c.ft);
   tr.querySelector('.c-tot').textContent = fmt(c.total);
@@ -427,7 +448,7 @@ function render(){
       <td><select onchange="upd(${it.id},'saleType',this.value)">
         ${Object.keys(SALE_TYPES).map(s=>`<option ${s===it.saleType?'selected':''}>${s}</option>`).join('')}
       </select></td>
-      <td class="num c-rate">${SALE_TYPES[it.saleType].rate}%</td>
+      <td class="num c-rate">${rateText(SALE_TYPES[it.saleType])}</td>
       <td><input class="num" type="number" min="0" value="${it.qty}" oninput="upd(${it.id},'qty',this.value)"></td>
       <td><input class="num" type="number" min="0" value="${it.value}" oninput="upd(${it.id},'value',this.value)"></td>
       <td>${SALE_TYPES[it.saleType].retail
@@ -547,7 +568,7 @@ function buildPayload(){
     reasonRemarks: val('invoiceType')==='Debit Note' ? val('dnRemarks') : '',
     items: items.map(it=>{
       const c=calcItem(it);
-      return { hsCode:it.hsCode, productDescription:it.desc, rate:c.rate+"%",
+      return { hsCode:it.hsCode, productDescription:it.desc, rate:c.rate,
         uoM:it.uoM, quantity:(+it.qty)||0, totalValues:0,
         valueSalesExcludingST:(+it.value)||0,
         fixedNotifiedValueOrRetailPrice: SALE_TYPES[it.saleType].retail?(((+it.mrp)||(+it.value))||0):0,
@@ -555,7 +576,8 @@ function buildPayload(){
         salesTaxWithheldAtSource:0, extraTax:"",
         furtherTax: Math.round(c.ft*100)/100,
         sroScheduleNo:c.sro, fedPayable:0, discount:0,
-        saleType:it.saleType, sroItemSerialNo:"" };
+        saleType:it.saleType,
+        sroItemSerialNo:(SALE_TYPES[it.saleType].sroItem||"") };
     })
   };
 }

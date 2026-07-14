@@ -18,6 +18,8 @@ Why this matters: these lookups prevent sandbox rejections BEFORE submission —
   0053 (buyer registration type mismatch), 0019 (invalid HS code).
 """
 
+from decimal import Decimal
+
 from django.core.cache import cache
 
 CACHE_TTL = 60 * 60 * 12  # 12 hours — reference data is slow-moving
@@ -34,6 +36,7 @@ REAL_ENDPOINTS = {
     "sro_schedule":"https://gw.fbr.gov.pk/pdi/v2/SroSchedule",
     "rate":        "https://gw.fbr.gov.pk/pdi/v2/SaleTypeToRate",
     "hs_uom":      "https://gw.fbr.gov.pk/pdi/v2/HS_UOM",
+    "sro_items_v2":"https://gw.fbr.gov.pk/pdi/v2/SROItem",
     "statl":       "https://gw.fbr.gov.pk/dist/v1/statl",
     "reg_type":    "https://gw.fbr.gov.pk/dist/v1/Get_Reg_Type",
 }
@@ -243,6 +246,38 @@ class MockReferenceClient:
                 return [{"uoM_ID": None, "description": u} for u in r["uoms"]]
         return []
 
+    # §5.8 SaleTypeToRate — rATE_ID/rATE_DESC/rATE_VALUE per transaction type.
+    # Mock rates engine ke official configs se derive hote hain; reduced rate
+    # par multi-rate case (Eighth Schedule item-wise) bhi included.
+    RATES_BY_TRANS_DESC = {
+        "Goods at standard rate (default)": [
+            {"ratE_ID": 734, "ratE_DESC": "18%", "ratE_VALUE": 18}],
+        "Goods at Reduced Rate": [
+            {"ratE_ID": 280, "ratE_DESC": "1%", "ratE_VALUE": 1},
+            {"ratE_ID": 281, "ratE_DESC": "5%", "ratE_VALUE": 5}],
+        "3rd Schedule Goods": [
+            {"ratE_ID": 413, "ratE_DESC": "18%", "ratE_VALUE": 18}],
+        "Exempt goods": [
+            {"ratE_ID": 300, "ratE_DESC": "Exempt", "ratE_VALUE": 0}],
+        "Goods at zero-rate": [
+            {"ratE_ID": 301, "ratE_DESC": "0%", "ratE_VALUE": 0}],
+        "Services": [
+            {"ratE_ID": 318, "ratE_DESC": "5%", "ratE_VALUE": 5}],
+        "Cotton Ginners": [
+            {"ratE_ID": 330, "ratE_DESC": "18%", "ratE_VALUE": 18}],
+    }
+
+    def sale_type_to_rate(self, date=None, trans_type_id=None,
+                          province_id=None):
+        desc = next((t["transactioN_DESC"] for t in self.TRANS_TYPES
+                     if t["transactioN_TYPE_ID"] == trans_type_id), None)
+        return list(self.RATES_BY_TRANS_DESC.get(desc, []))
+
+    def sro_items(self, sro_id=None, date=None):
+        # §5.10 SROItem v2 shape
+        return [{"srO_ITEM_ID": 17853, "srO_ITEM_DESC": "50"},
+                {"srO_ITEM_ID": 17854, "srO_ITEM_DESC": "51"}]
+
     def statl_check(self, reg_no, date=None):
         """Mock STATL: 13-digit CNICs ending in even digit = Active (arbitrary
         but deterministic, so tests are repeatable)."""
@@ -304,6 +339,38 @@ class RealReferenceClient:
         return self._get(REAL_ENDPOINTS["hs_uom"],
                          {"hs_code": hs_code, "annexure_id": 3})
 
+    # §5.8 SaleTypeToRate — rATE_ID/rATE_DESC/rATE_VALUE per transaction type.
+    # Mock rates engine ke official configs se derive hote hain; reduced rate
+    # par multi-rate case (Eighth Schedule item-wise) bhi included.
+    RATES_BY_TRANS_DESC = {
+        "Goods at standard rate (default)": [
+            {"ratE_ID": 734, "ratE_DESC": "18%", "ratE_VALUE": 18}],
+        "Goods at Reduced Rate": [
+            {"ratE_ID": 280, "ratE_DESC": "1%", "ratE_VALUE": 1},
+            {"ratE_ID": 281, "ratE_DESC": "5%", "ratE_VALUE": 5}],
+        "3rd Schedule Goods": [
+            {"ratE_ID": 413, "ratE_DESC": "18%", "ratE_VALUE": 18}],
+        "Exempt goods": [
+            {"ratE_ID": 300, "ratE_DESC": "Exempt", "ratE_VALUE": 0}],
+        "Goods at zero-rate": [
+            {"ratE_ID": 301, "ratE_DESC": "0%", "ratE_VALUE": 0}],
+        "Services": [
+            {"ratE_ID": 318, "ratE_DESC": "5%", "ratE_VALUE": 5}],
+        "Cotton Ginners": [
+            {"ratE_ID": 330, "ratE_DESC": "18%", "ratE_VALUE": 18}],
+    }
+
+    def sale_type_to_rate(self, date=None, trans_type_id=None,
+                          province_id=None):
+        desc = next((t["transactioN_DESC"] for t in self.TRANS_TYPES
+                     if t["transactioN_TYPE_ID"] == trans_type_id), None)
+        return list(self.RATES_BY_TRANS_DESC.get(desc, []))
+
+    def sro_items(self, sro_id=None, date=None):
+        # §5.10 SROItem v2 shape
+        return [{"srO_ITEM_ID": 17853, "srO_ITEM_DESC": "50"},
+                {"srO_ITEM_ID": 17854, "srO_ITEM_DESC": "51"}]
+
     def statl_check(self, reg_no, date=None):
         return self._post(REAL_ENDPOINTS["statl"],
                           {"regno": reg_no, "date": date or ""})
@@ -327,3 +394,122 @@ def cached(key, fn):
         data = fn()
         cache.set(key, data, CACHE_TTL)
     return data
+
+# ------------------------------------------------------- Reference sync
+class ReferenceSyncService:
+    """Milestone 4 — FBR Reference APIs ko TaxSaleType rows ke saath sync
+    rakhta hai (Tech Spec v1.12 §5.5 transtypecode + §5.8 SaleTypeToRate).
+
+    Design (never destroy data):
+      - Trans type IDs: exact-name match par fbr_trans_type_id set hota hai.
+      - Rate drift: har mapped sale type ke liye FBR ke current rates fetch;
+        agar hamari effective rate/label FBR ke set mein NAHI to drift.
+      - Apply SIRF tab auto hota hai jab FBR EXACTLY EK rate lauta ta hai
+        (unambiguous). Multi-rate (e.g. Eighth Schedule item-wise) sirf
+        report hota hai — practitioner admin se decide karta hai.
+      - Apply = purani row effective_to se close + nayi date-effective row.
+    """
+
+    def __init__(self, client=None):
+        self.client = client or get_reference_client()
+
+    def sync_trans_type_ids(self):
+        from .models import TaxSaleType
+        rows = self.client.trans_types() or []
+        by_desc = {r["transactioN_DESC"]: r["transactioN_TYPE_ID"]
+                   for r in rows}
+        matched, unmatched = [], []
+        names = set(TaxSaleType.objects.filter(is_active=True)
+                    .values_list("name", flat=True))
+        for name in sorted(names):
+            tid = by_desc.get(name)
+            if tid is None:
+                unmatched.append(name)
+                continue
+            TaxSaleType.objects.filter(name=name).exclude(
+                fbr_trans_type_id=tid).update(fbr_trans_type_id=tid)
+            matched.append((name, tid))
+        return {"matched": matched, "unmatched": unmatched,
+                "fbr_types": len(rows)}
+
+    def check_rate_drift(self, on_date=None, province_id=8):
+        """[{sale_type, trans_type_id, current, fbr_rates, drift,
+        auto_applicable}] — sirf un types ke liye jinke paas trans ID hai."""
+        from datetime import date as _date
+        from .models import TaxSaleType
+        from .tax_engine import load_rules
+        on_date = on_date or _date.today()
+        sale_types, _, _ = load_rules(on_date)
+        report = []
+        seen = set()
+        qs = (TaxSaleType.objects.filter(is_active=True,
+                                         fbr_trans_type_id__isnull=False)
+              .order_by("name"))
+        for row in qs:
+            if row.name in seen:
+                continue
+            seen.add(row.name)
+            cfg = sale_types.get(row.name)
+            if cfg is None:
+                continue
+            fbr = self.client.sale_type_to_rate(
+                date=on_date.strftime("%d-%b-%Y"),
+                trans_type_id=row.fbr_trans_type_id,
+                province_id=province_id) or []
+            if not fbr:
+                continue
+            current_label = (cfg.get("rate_label")
+                             or f'{Decimal(str(cfg["rate"])).normalize()}%')
+            fbr_labels = [r.get("ratE_DESC", "") for r in fbr]
+            drift = current_label not in fbr_labels
+            report.append({
+                "sale_type": row.name,
+                "trans_type_id": row.fbr_trans_type_id,
+                "current": current_label,
+                "fbr_rates": fbr_labels,
+                "drift": drift,
+                "auto_applicable": drift and len(fbr) == 1,
+                "fbr_raw": fbr,
+            })
+        return report
+
+    def apply_rate_updates(self, report, on_date=None):
+        """Unambiguous drifts apply: purani row close, nayi date-effective
+        row create. Returns applied list."""
+        from datetime import date as _date, timedelta
+        from .models import TaxSaleType
+        from .tax_engine import invalidate_rules_cache
+        on_date = on_date or _date.today()
+        applied = []
+        for d in report:
+            if not d.get("auto_applicable"):
+                continue
+            fbr_rate = d["fbr_raw"][0]
+            old = (TaxSaleType.objects.filter(
+                name=d["sale_type"], is_active=True,
+                effective_from__lte=on_date)
+                .order_by("-effective_from").first())
+            if old is None:
+                continue
+            # close old row (data preserved), naya row aaj se effective
+            old.effective_to = on_date - timedelta(days=1)
+            old.save(update_fields=["effective_to"])
+            TaxSaleType.objects.create(
+                name=old.name,
+                rate=Decimal(str(fbr_rate.get("ratE_VALUE", 0))),
+                rate_type=old.rate_type, rate_per_unit=old.rate_per_unit,
+                rate_label=fbr_rate.get("ratE_DESC", ""),
+                sro_item_serial=old.sro_item_serial,
+                charges_st=old.charges_st,
+                further_tax_applies=old.further_tax_applies,
+                sro_schedule=old.sro_schedule,
+                retail_price_based=old.retail_price_based,
+                fbr_trans_type_id=old.fbr_trans_type_id,
+                effective_from=on_date, is_active=True,
+                legal_reference=f"FBR SaleTypeToRate sync {on_date} "
+                                f"(rate_id={fbr_rate.get('ratE_ID')})")
+            applied.append(d["sale_type"])
+        if applied:
+            invalidate_rules_cache()
+        return applied
+

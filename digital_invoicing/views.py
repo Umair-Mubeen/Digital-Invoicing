@@ -123,6 +123,53 @@ def cancel_invoice(request, pk):
     return JsonResponse(body)
 
 
+@login_required
+def cancel_invoice_item(request, pk, item_pk):
+    """Ek item cancel (Manual v1.6 partial cancellation)."""
+    from .services import InvoiceCancellationService, SubmissionError
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "POST required"}, status=405)
+    try:
+        body = InvoiceCancellationService(request.user).cancel_item(
+            pk, item_pk, remarks=request.POST.get("remarks", ""))
+    except SubmissionError as e:
+        return JsonResponse({"ok": False, "error": e.message}, status=400)
+    log_event(request, "item_cancelled", invoice_id=pk, item_id=item_pk)
+    return JsonResponse(body)
+
+
+@login_required
+def edit_invoice_item(request, pk, item_pk):
+    """Ek item edit — once only; tax server recompute (Manual v1.6)."""
+    from .services import InvoiceCancellationService, SubmissionError
+    import json as _json
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "POST required"}, status=405)
+    try:
+        changes = _json.loads(request.body or "{}")
+    except ValueError:
+        return JsonResponse({"ok": False, "error": "Invalid JSON"}, status=400)
+    try:
+        body = InvoiceCancellationService(request.user).edit_item(
+            pk, item_pk, changes)
+    except SubmissionError as e:
+        return JsonResponse({"ok": False, "error": e.message}, status=400)
+    log_event(request, "item_edited", invoice_id=pk, item_id=item_pk,
+              fields=sorted(changes.keys()))
+    return JsonResponse(body)
+
+
+@login_required
+def invoice_modification_eligibility(request, pk):
+    """UI ke liye: kya cancel/edit allowed hai + 10% limit status."""
+    from .services import InvoiceCancellationService, SubmissionError
+    try:
+        body = InvoiceCancellationService(request.user).eligibility(pk)
+    except SubmissionError as e:
+        return JsonResponse({"ok": False, "error": e.message}, status=404)
+    return JsonResponse(body)
+
+
 
 @login_required
 def invoice_list(request):
@@ -253,15 +300,22 @@ def create_invoice(request):
                   for i in SavedItem.objects.filter(owner=request.user)[:12]]
     # Phase 7: DB-driven tax rules UI ko bhi (display sync; server phir bhi
     # authoritative hai)
-    from .tax_engine import load_rules
+    from .tax_engine import load_rules, get_scenarios, LEGACY_ALIASES
     sale_types, further_rate, ft_exempt = load_rules()
     tax_cfg = {
         "saleTypes": {n: {"rate": float(c["rate"]), "further": c["further"],
                           "sro": c["sro"], "st": c["charges_st"],
-                          "retail": c["retail_price_based"]}
-                      for n, c in sale_types.items()},
+                          "retail": c["retail_price_based"],
+                          "rateType": c.get("rate_type", "percent"),
+                          "perUnit": float(c.get("per_unit", 0) or 0),
+                          "label": c.get("rate_label", ""),
+                          "sroItem": c.get("sro_item", "")}
+                      for n, c in sale_types.items()
+                      if n not in LEGACY_ALIASES},   # dropdown: official only
         "furtherRate": float(further_rate),
         "ftExemptHS": sorted(ft_exempt),
+        "scenarios": [{"code": c, "desc": d, "saleType": s}
+                      for c, d, s in get_scenarios()],
     }
     return render(request, "digital_invoicing/invoicing.html",
                   {"businesses": businesses, "biz_json": biz_json,

@@ -126,12 +126,50 @@ class Invoice(models.Model):
 
     @property
     def is_locked(self):
-        """72-hour edit window (STGO 01 of 2026)."""
+        """Correction window band? Manual v1.6 p.30: invoice return mein
+        move hoti hai 72 GHANTE ke baad YA MONTH-END par — jo pehle aaye.
+        Uske baad cancel/edit IRIS par bhi allowed nahi."""
         from django.utils import timezone
         from datetime import timedelta
         if not self.submitted_at:
             return False
-        return timezone.now() > self.submitted_at + timedelta(hours=72)
+        now = timezone.now()
+        if now > self.submitted_at + timedelta(hours=72):
+            return True
+        # month-end lock: submission ke mahine ke baad
+        sub = timezone.localtime(self.submitted_at)
+        return (now.year, now.month) > (sub.year, sub.month)
+
+    @property
+    def has_edited_items(self):
+        return self.items.filter(item_status="edited").exists()
+
+    def refresh_modification_status(self):
+        """Item statuses se invoice status derive karo (Manual p.22
+        vocabulary). Save karta hai. Sirf modification-statuses touch hote
+        hain; failed/draft waisi hi rehti hain."""
+        if self.status not in ("valid", "edited", "cancelled",
+                               "partially_edited", "partially_cancelled",
+                               "partially_edited_cancelled"):
+            return self.status
+        counts = {"active": 0, "cancelled": 0, "edited": 0}
+        for s in self.items.values_list("item_status", flat=True):
+            counts[s] = counts.get(s, 0) + 1
+        total = sum(counts.values())
+        if counts["cancelled"] == total and total:
+            new = "cancelled"
+        elif counts["edited"] and counts["cancelled"]:
+            new = "partially_edited_cancelled"
+        elif counts["edited"]:
+            new = "edited" if counts["edited"] == total else "partially_edited"
+        elif counts["cancelled"]:
+            new = "partially_cancelled"
+        else:
+            new = "valid"
+        if new != self.status:
+            self.status = new
+            self.save(update_fields=["status"])
+        return self.status
 
 
 class InvoiceItem(models.Model):
@@ -155,8 +193,20 @@ class InvoiceItem(models.Model):
     total_values = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     sro_item_serial_no = models.CharField(max_length=60, blank=True, default="")
 
+    # Milestone 3 — cancellation/edit workflow (Manual v1.6 §4.1)
+    ITEM_STATUS = [("active", "Active"), ("cancelled", "Cancelled"),
+                   ("edited", "Edited")]
+    item_status = models.CharField(max_length=12, choices=ITEM_STATUS,
+                                   default="active")
+    edited_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    # Pre-edit snapshot — Manual p.30: original details baad mein bhi
+    # viewable rehni chahiyein. Edit se pehle ke sab tax/value fields.
+    original_snapshot = models.JSONField(null=True, blank=True)
+
     # computed
-    rate = models.CharField(max_length=10, blank=True)
+    # "18% along with rupees 60 per kilogram" (38 chars) fit hona chahiye
+    rate = models.CharField(max_length=60, blank=True)
     sales_tax = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     further_tax = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     sro_schedule = models.CharField(max_length=60, blank=True)
@@ -208,6 +258,9 @@ class AuditLog(models.Model):
         ("logout", "Logout"), ("profile_saved", "Profile saved"),
         ("invoice_valid", "Invoice validated"), ("invoice_failed", "Invoice rejected"),
         ("invoice_printed", "Invoice printed"),
+        ("invoice_cancelled", "Invoice cancelled"),
+        ("item_cancelled", "Invoice item cancelled"),
+        ("item_edited", "Invoice item edited"),
     ]
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                              on_delete=models.SET_NULL, related_name="audit_logs")
@@ -232,14 +285,24 @@ class HSCode(models.Model):
     sale type aur practitioner note. Ye TaxBuddy ki curated tax knowledge hai
     (admin se edit hoti hai). System SUGGEST karta hai; final classification
     hamesha user/practitioner ki hai."""
-    SALE_TYPES = [
-        ("Goods at standard rate", "Goods at standard rate"),
-        ("Goods at reduced rate", "Goods at reduced rate"),
-        ("3rd Schedule Goods", "3rd Schedule Goods"),
-        ("Exempt Goods", "Exempt Goods"),
-        ("Zero-rated Goods", "Zero-rated Goods"),
-        ("Services", "Services"),
-    ]
+    # Official PRAL DI labels (Scenarios doc v1.11). Legacy labels neeche
+    # rakhe hain taake purani rows validate hoti rahein — engine alias se
+    # resolve karta hai (tax_engine.LEGACY_ALIASES).
+    SALE_TYPES = [(n, n) for n in [
+        "Goods at standard rate (default)", "Goods at Reduced Rate",
+        "3rd Schedule Goods", "Exempt goods", "Goods at zero-rate",
+        "Steel melting and re-rolling", "Ship breaking", "Cotton ginners",
+        "Telecommunication services", "Toll Manufacturing",
+        "Petroleum Products", "Electricity Supply to Retailers",
+        "Gas to CNG stations", "Mobile Phones",
+        "Processing/Conversion of Goods", "Goods (FED in ST Mode)",
+        "Services (FED in ST Mode)", "Services", "Electric Vehicle",
+        "Cement /Concrete Block", "Potassium Chlorate", "CNG Sales",
+        "Goods as per SRO.297(|)/2023", "Non-Adjustable Supplies",
+        # legacy
+        "Goods at standard rate", "Goods at reduced rate",
+        "Exempt Goods", "Zero-rated Goods",
+    ]]
     hs_code = models.CharField(max_length=12, unique=True)   # XXXX.XXXX
     description = models.CharField(max_length=255)
     uoms = models.CharField(max_length=255, blank=True,
@@ -320,8 +383,23 @@ class TaxSaleType(models.Model):
     """Ek sale type ki ek date-effective configuration row.
     Naya budget rate = NAYI row (purani ko effective_to se close karein) —
     historical invoices ki recomputation bhi sahi rahegi."""
+    RATE_TYPES = [
+        ("percent", "Percent of value"),
+        ("fixed_per_unit", "Fixed Rs. per unit (qty x Rs.X)"),
+        ("compound", "Percent + Rs. per unit"),
+        ("exempt", "Exempt (no ST)"),
+    ]
     name = models.CharField(max_length=80)          # exact FBR DI label
     rate = models.DecimalField(max_digits=6, decimal_places=2)   # %
+    rate_type = models.CharField(max_length=20, choices=RATE_TYPES,
+                                 default="percent")
+    rate_per_unit = models.DecimalField(max_digits=10, decimal_places=2,
+                                        default=0)  # Rs.X (fixed/compound)
+    rate_label = models.CharField(max_length=60, blank=True, default="",
+                                  help_text='Exact PRAL rate string, e.g. '
+                                  '"Rs.3" ya "18% along with rupees 60 per '
+                                  'kilogram". Khali = "<rate>%"')
+    sro_item_serial = models.CharField(max_length=20, blank=True, default="")
     charges_st = models.BooleanField(default=True)
     further_tax_applies = models.BooleanField(default=False)
     sro_schedule = models.CharField(max_length=80, blank=True, default="")

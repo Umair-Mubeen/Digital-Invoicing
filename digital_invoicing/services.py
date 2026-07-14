@@ -143,15 +143,24 @@ class TaxCalculationService:
                 calc = compute_item(
                     sale_type, value, buyer_unregistered=buyer_unregistered,
                     hs_code=it.get("hsCode", ""),
-                    retail_price=it.get("fixedNotifiedValueOrRetailPrice", 0))
+                    retail_price=it.get("fixedNotifiedValueOrRetailPrice", 0),
+                    quantity=it.get("quantity", 1))
             except ValueError as e:
                 raise SubmissionError(str(e), simple=True)
 
             it = dict(it)
+            # Official PRAL label bhejo (legacy alias -> resolved) — spec
+            # v1.12 saleType string exact match maangta hai.
+            it["saleType"] = calc["sale_type"]
             it["rate"] = calc["rate"]
             it["salesTaxApplicable"] = float(calc["sales_tax"])
             it["furtherTax"] = float(calc["further_tax"])
-            it["sroScheduleNo"] = calc["sro_schedule"]
+            # User ki di hui SRO refs ko respect karo (item-wise schedules);
+            # khali hon to sale-type defaults.
+            if not (it.get("sroScheduleNo") or "").strip():
+                it["sroScheduleNo"] = calc["sro_schedule"]
+            if not (it.get("sroItemSerialNo") or "").strip():
+                it["sroItemSerialNo"] = calc["sro_item"]
             _mrp = it.get("fixedNotifiedValueOrRetailPrice", 0) or 0
             it["fixedNotifiedValueOrRetailPrice"] = (
                 float(_mrp if _mrp else value) if calc["retail_price_based"] else 0
@@ -440,34 +449,217 @@ class InvoiceResubmissionService:
 
 
 class InvoiceCancellationService:
-    """Local cancellation TRACKING — PRAL v1.12 mein cancellation ka koi API
-    NAHI; cancel IRIS portal se hota hai (Manual v1.6). Ye service system ki
-    books ko IRIS ke saath sync rakhti hai. Manual ke rules mirror:
-      - sirf valid invoices
-      - 72-hour window (insertion/submission se)
-      - edited invoice cancel nahi ho sakti (edit workflow abhi nahi — guard
-        future-proof hai)
+    """Local cancellation/edit TRACKING — PRAL v1.12 mein cancellation ka
+    koi API NAHI; cancel/edit IRIS portal se hota hai (Manual v1.6 §4.1).
+    Ye service system ki books ko IRIS ke saath sync rakhti hai aur Manual
+    ke rules MIRROR karti hai taake operator invalid action try hi na kare:
+      - sirf valid (ya partially-modified) invoices
+      - 72-hour window YA month-end — jo pehle (Invoice.is_locked)
+      - edited item cancel nahi ho sakta; edited-item wali invoice full
+        cancel nahi ho sakti (p.25/p.28)
+      - har item sirf EK BAAR edit (p.28); original snapshot preserved (p.30)
+      - 10% of last month's sales — TOTAL modification limit, cancels +
+        edits combined (p.30-31)
+    ASSUMPTION (Manual formula nahi deta): limit ka 'value' = item ka
+    (value + ST + FT); edit par totals ka absolute delta.
     """
+
+    MODIFIABLE = ("valid", "edited", "partially_edited",
+                  "partially_cancelled", "partially_edited_cancelled")
 
     def __init__(self, user):
         self.user = user
 
-    def mark_cancelled(self, invoice_pk, remarks=""):
+    # ---- 10% limit (Manual p.30-31) ----
+    def modification_limit(self, seller_profile, on_date=None):
+        """(limit, used, remaining) — last month's VALID sales ka 10%;
+        used = is mahine ke cancelled/edited items ka affected value."""
+        from datetime import date as _date
+        from django.db.models import F, Sum
+        on_date = on_date or _date.today()
+        prev_y, prev_m = ((on_date.year - 1, 12) if on_date.month == 1
+                          else (on_date.year, on_date.month - 1))
+        last_month_sales = (Invoice.objects.filter(
+            seller_profile=seller_profile,
+            invoice_date__year=prev_y, invoice_date__month=prev_m)
+            .exclude(status__in=("draft", "failed", "pending_retry"))
+            .aggregate(t=Sum("invoice_total"))["t"] or Decimal("0"))
+        limit = (last_month_sales * Decimal("0.10")).quantize(Decimal("0.01"))
+
+        # used: is mahine modify hue items
+        month_q = InvoiceItem.objects.filter(
+            invoice__seller_profile=seller_profile)
+        cancelled = (month_q.filter(
+            item_status="cancelled",
+            cancelled_at__year=on_date.year, cancelled_at__month=on_date.month)
+            .aggregate(t=Sum(F("value_excl_st") + F("sales_tax") +
+                             F("further_tax")))["t"] or Decimal("0"))
+        used = Decimal(cancelled)
+        for it in month_q.filter(item_status="edited",
+                                 edited_at__year=on_date.year,
+                                 edited_at__month=on_date.month,
+                                 original_snapshot__isnull=False):
+            snap = it.original_snapshot or {}
+            old = (Decimal(str(snap.get("value_excl_st", 0))) +
+                   Decimal(str(snap.get("sales_tax", 0))) +
+                   Decimal(str(snap.get("further_tax", 0))))
+            new = it.value_excl_st + it.sales_tax + it.further_tax
+            used += abs(old - new)
+        return limit, used.quantize(Decimal("0.01")), max(
+            Decimal("0"), limit - used).quantize(Decimal("0.01"))
+
+    def _check_limit(self, inv, amount):
+        limit, used, remaining = self.modification_limit(inv.seller_profile)
+        if amount > remaining:
+            raise SubmissionError(
+                f"10% modification limit exceeded (Manual v1.6): limit "
+                f"{limit}, used {used}, remaining {remaining}, "
+                f"required {amount}", simple=True)
+
+    def _get_invoice(self, invoice_pk, for_full_cancel=False):
         inv = Invoice.objects.filter(owner=self.user, pk=invoice_pk).first()
         if not inv:
             raise SubmissionError("Invoice not found", simple=True)
-        if inv.status != "valid":
+        if inv.status not in self.MODIFIABLE:
             raise SubmissionError(
-                "Only valid invoices can be marked cancelled", simple=True)
+                "Only valid invoices can be modified", simple=True)
         if inv.is_locked:
             raise SubmissionError(
-                "72-hour window has passed — cancellation is no longer "
-                "allowed on IRIS either (Manual v1.6)", simple=True)
-        inv.status = "cancelled"
+                "Correction window closed — 72 hours ya month-end, jo "
+                "pehle (Manual v1.6). IRIS par bhi allowed nahi.",
+                simple=True)
+        if for_full_cancel and inv.has_edited_items:
+            raise SubmissionError(
+                "Invoice with edited items cannot be fully cancelled "
+                "(Manual v1.6 — 'Cancel All' only if no items edited)",
+                simple=True)
+        return inv
+
+    def _item_value(self, it):
+        return (it.value_excl_st + it.sales_tax + it.further_tax)
+
+    # ---- Full invoice cancel ----
+    def mark_cancelled(self, invoice_pk, remarks=""):
+        from django.utils import timezone
+        inv = self._get_invoice(invoice_pk, for_full_cancel=True)
+        active = list(inv.items.filter(item_status="active"))
+        amount = sum((self._item_value(it) for it in active), Decimal("0"))
+        self._check_limit(inv, amount)
+        now = timezone.now()
+        for it in active:
+            it.item_status = "cancelled"
+            it.cancelled_at = now
+            it.save(update_fields=["item_status", "cancelled_at"])
         inv.reason_remarks = (remarks or inv.reason_remarks or
                               "Cancelled on IRIS portal")
-        inv.save()
-        return {"ok": True, "invoiceId": inv.pk, "status": "cancelled"}
+        inv.save(update_fields=["reason_remarks"])
+        if inv.items.exists():
+            inv.refresh_modification_status()
+        else:
+            # Item rows ke baghair (legacy/payload-only records) — poora
+            # invoice hi cancel ho raha hai.
+            inv.status = "cancelled"
+            inv.save(update_fields=["status"])
+        return {"ok": True, "invoiceId": inv.pk, "status": inv.status}
+
+    # ---- Item cancel ----
+    def cancel_item(self, invoice_pk, item_pk, remarks=""):
+        from django.utils import timezone
+        inv = self._get_invoice(invoice_pk)
+        it = inv.items.filter(pk=item_pk).first()
+        if not it:
+            raise SubmissionError("Item not found", simple=True)
+        if it.item_status == "edited":
+            raise SubmissionError(
+                "Edited item cannot be cancelled (Manual v1.6)", simple=True)
+        if it.item_status == "cancelled":
+            raise SubmissionError("Item already cancelled", simple=True)
+        self._check_limit(inv, self._item_value(it))
+        it.item_status = "cancelled"
+        it.cancelled_at = timezone.now()
+        it.save(update_fields=["item_status", "cancelled_at"])
+        inv.refresh_modification_status()
+        return {"ok": True, "invoiceId": inv.pk, "itemId": it.pk,
+                "status": inv.status}
+
+    # ---- Item edit (once only) ----
+    EDITABLE_FIELDS = ("quantity", "value_excl_st", "retail_price",
+                       "discount", "product_description")
+
+    def edit_item(self, invoice_pk, item_pk, changes):
+        """Item-level correction — header fixed rehta hai (Manual p.30).
+        Tax server-side recompute hota hai (engine authoritative)."""
+        from django.utils import timezone
+        from .tax_engine import compute_item as _compute
+        inv = self._get_invoice(invoice_pk)
+        it = inv.items.filter(pk=item_pk).first()
+        if not it:
+            raise SubmissionError("Item not found", simple=True)
+        if it.item_status == "edited":
+            raise SubmissionError(
+                "Each item can only be edited once (Manual v1.6)",
+                simple=True)
+        if it.item_status == "cancelled":
+            raise SubmissionError("Cancelled item cannot be edited",
+                                  simple=True)
+
+        snapshot = {f: str(getattr(it, f)) for f in self.EDITABLE_FIELDS}
+        snapshot.update({"sales_tax": str(it.sales_tax),
+                         "further_tax": str(it.further_tax),
+                         "rate": it.rate})
+        old_total = self._item_value(it)
+
+        applied = False
+        for f in self.EDITABLE_FIELDS:
+            if f in changes and changes[f] is not None:
+                setattr(it, f, changes[f])
+                applied = True
+        if not applied:
+            raise SubmissionError("No editable fields provided", simple=True)
+
+        try:
+            calc = _compute(
+                it.sale_type, it.value_excl_st,
+                buyer_unregistered=(inv.buyer_registration_type
+                                    == "Unregistered"),
+                hs_code=it.hs_code, retail_price=it.retail_price,
+                on_date=inv.invoice_date, quantity=it.quantity)
+        except ValueError as e:
+            raise SubmissionError(str(e), simple=True)
+        it.sales_tax = calc["sales_tax"]
+        it.further_tax = calc["further_tax"]
+        it.rate = calc["rate"]
+
+        self._check_limit(inv, abs(old_total - self._item_value(it)))
+
+        it.original_snapshot = snapshot
+        it.item_status = "edited"
+        it.edited_at = timezone.now()
+        it.save()
+        inv.refresh_modification_status()
+        return {"ok": True, "invoiceId": inv.pk, "itemId": it.pk,
+                "status": inv.status}
+
+    # ---- Eligibility (UI ke liye) ----
+    def eligibility(self, invoice_pk):
+        inv = Invoice.objects.filter(owner=self.user, pk=invoice_pk).first()
+        if not inv:
+            raise SubmissionError("Invoice not found", simple=True)
+        limit, used, remaining = self.modification_limit(inv.seller_profile)
+        return {
+            "invoiceId": inv.pk, "status": inv.status,
+            "windowOpen": (inv.status in self.MODIFIABLE
+                           and not inv.is_locked),
+            "fullCancelAllowed": (inv.status in self.MODIFIABLE
+                                  and not inv.is_locked
+                                  and not inv.has_edited_items),
+            "limit": str(limit), "used": str(used),
+            "remaining": str(remaining),
+            "items": [{"id": i.pk, "status": i.item_status,
+                       "editable": i.item_status == "active",
+                       "cancellable": i.item_status == "active"}
+                      for i in inv.items.all()],
+        }
 
 
 # --------------------------------------------------------------------------
