@@ -24,6 +24,15 @@ from .tax_engine import compute_item
 from .fbr_client import get_fbr_client
 
 
+def _json_for_html(data):
+    """JSON jo <script> block ke andar SAFE hai — user strings ke andar
+    </script> ya <!-- injection ko unicode-escape kar deta hai."""
+    import json as _j
+    return (_j.dumps(data)
+            .replace("<", "\\u003c").replace(">", "\\u003e")
+            .replace("&", "\\u0026"))
+
+
 def log_event(request, action, **detail):
     """Har ahem event AuditLog mein save karo (kabhi crash na kare)."""
     try:
@@ -178,7 +187,10 @@ def invoice_list(request):
     from django.core.paginator import Paginator
     from django.db.models import Q
 
-    qs = Invoice.objects.filter(owner=request.user)
+    # Perf: fbr_payload/fbr_response bade JSON blobs hain — list mein load
+    # na karo (sirf detail/print par chahiye hote hain)
+    qs = (Invoice.objects.filter(owner=request.user)
+          .defer("fbr_payload", "fbr_response"))
     q = request.GET.get("q", "").strip()
     status = request.GET.get("status", "").strip()
     if q:
@@ -271,7 +283,7 @@ def dashboard(request):
         "m_st": m["st"] or 0,
         "month_name": today.strftime("%B %Y"),
         "recent": qs[:8],
-        "chart": _json.dumps({
+        "chart": _json_for_html({
             "labels": labels, "value": trend_value, "st": trend_st,
             "statusLabels": status_labels, "statusCounts": status_counts,
             "buyerLabels": buyer_labels, "buyerValues": buyer_values,
@@ -321,7 +333,7 @@ def create_invoice(request):
                   {"businesses": businesses, "biz_json": biz_json,
                    "buyers_json": buyers_json, "items_json": items_json,
                    "recent_valid": recent_valid,
-                   "tax_cfg": __import__("json").dumps(tax_cfg)})
+                   "tax_cfg": _json_for_html(tax_cfg)})
 
 
 # ---------------------------------------------------------------------------
@@ -757,10 +769,10 @@ def purchases(request):
     pis = pis[:100]
     return render(request, "digital_invoicing/purchases.html", {
         "purchases": pis, "q": pq, "date_from": pfrom, "date_to": pto,
-        "suppliers_json": json.dumps(
+        "suppliers_json": _json_for_html(
             [{"id": s.pk, "name": s.business_name, "ntn": s.ntn_cnic}
              for s in Supplier.objects.filter(owner=request.user)[:200]]),
-        "products_json": json.dumps(
+        "products_json": _json_for_html(
             [{"id": p.pk, "name": p.name, "hs": p.hs_code,
               "price": float(p.default_price)}
              for p in Product.objects.filter(owner=request.user,

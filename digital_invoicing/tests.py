@@ -1563,3 +1563,137 @@ class RetryQueueTests(TestCase):
         out = StringIO()
         call_command("retry_pending_invoices", stdout=out)
         self.assertIn("processed=1", out.getvalue())
+
+
+class SecurityEndpointTests(TestCase):
+    """Milestone 6 — IDOR/auth verification + modification endpoints HTTP layer."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from django.utils import timezone
+        self.alice = User.objects.create_user("alice6", password="x")
+        self.bob = User.objects.create_user("bob6", password="x")
+        self.profile = SellerProfile.objects.create(
+            user=self.alice, ntn_cnic="1234567", business_name="A",
+            province="Sindh", address="K")
+        self.inv = Invoice.objects.create(
+            owner=self.alice, seller_profile=self.profile,
+            invoice_type="Sale Invoice", invoice_date="2026-07-01",
+            buyer_business_name="B", buyer_registration_type="Registered",
+            status="valid", submitted_at=timezone.now())
+        self.item = InvoiceItem.objects.create(
+            invoice=self.inv, hs_code="0101.2100", product_description="t",
+            sale_type="Goods at standard rate (default)", quantity=1,
+            value_excl_st=1000, sales_tax=180, rate="18%")
+        # 10% modification limit ke liye last-month sales
+        from datetime import date, timedelta
+        prev = date.today().replace(day=1) - timedelta(days=1)
+        Invoice.objects.create(
+            owner=self.alice, seller_profile=self.profile,
+            invoice_type="Sale Invoice", invoice_date=prev,
+            buyer_business_name="B", buyer_registration_type="Registered",
+            total_value=100000, invoice_total=100000, status="valid",
+            submitted_at=timezone.now() - timedelta(days=35))
+        self.base = f"/digital-invoicing/invoices/{self.inv.pk}"
+
+    def test_unauthenticated_redirects(self):
+        r = self.client.get(f"{self.base}/eligibility/")
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("login", r["Location"])
+
+    def test_idor_other_users_invoice_blocked(self):
+        self.client.login(username="bob6", password="x")
+        # Bob, Alice ki invoice par: eligibility 404; cancel/edit 400/404
+        self.assertEqual(
+            self.client.get(f"{self.base}/eligibility/").status_code, 404)
+        self.assertEqual(
+            self.client.post(f"{self.base}/cancel/").status_code, 400)
+        r = self.client.post(
+            f"{self.base}/items/{self.item.pk}/edit/",
+            data='{"value_excl_st": 1}', content_type="application/json")
+        self.assertEqual(r.status_code, 400)
+        self.inv.refresh_from_db()
+        self.assertEqual(self.inv.status, "valid")   # kuch nahi badla
+
+    def test_owner_full_flow_over_http(self):
+        self.client.login(username="alice6", password="x")
+        e = self.client.get(f"{self.base}/eligibility/").json()
+        self.assertTrue(e["windowOpen"])
+        r = self.client.post(
+            f"{self.base}/items/{self.item.pk}/edit/",
+            data='{"value_excl_st": 500}', content_type="application/json")
+        self.assertTrue(r.json()["ok"])
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.sales_tax, Decimal("90.00"))
+        # edited item cancel -> 400
+        r = self.client.post(f"{self.base}/items/{self.item.pk}/cancel/")
+        self.assertEqual(r.status_code, 400)
+
+    def test_edit_rejects_bad_json(self):
+        self.client.login(username="alice6", password="x")
+        r = self.client.post(
+            f"{self.base}/items/{self.item.pk}/edit/",
+            data='not json', content_type="application/json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_list_page_defers_but_renders(self):
+        self.client.login(username="alice6", password="x")
+        r = self.client.get("/digital-invoicing/invoices/")
+        self.assertEqual(r.status_code, 200)
+
+
+class ValidatorBranchTests(TestCase):
+    """Milestone 6 — uncovered validator branches."""
+
+    def _codes(self, payload):
+        from .validators import validate_invoice
+        return {e["errorCode"] for e in validate_invoice(payload)}
+
+    def _p(self, **item_kw):
+        item = {"hsCode": "0101.2100", "productDescription": "t",
+                "rate": "18%", "uoM": "Numbers, pieces, units",
+                "quantity": 1, "valueSalesExcludingST": 100,
+                "salesTaxApplicable": 18, "furtherTax": 0,
+                "saleType": "Goods at standard rate (default)",
+                "sroScheduleNo": "", "sroItemSerialNo": "",
+                "salesTaxWithheldAtSource": 0, "extraTax": "",
+                "fedPayable": 0, "discount": 0, "totalValues": 0,
+                "fixedNotifiedValueOrRetailPrice": 0}
+        item.update(item_kw)
+        return {"invoiceType": "Sale Invoice", "invoiceDate": "2026-07-01",
+                "sellerNTNCNIC": "1234567", "sellerBusinessName": "S",
+                "sellerProvince": "Sindh", "sellerAddress": "K",
+                "buyerNTNCNIC": "7654321", "buyerBusinessName": "B",
+                "buyerProvince": "Sindh", "buyerAddress": "K",
+                "buyerRegistrationType": "Registered",
+                "invoiceRefNo": "", "scenarioId": "SN001", "items": [item]}
+
+    def test_0060_services_sqy_uom(self):
+        p = self._p(saleType="Services", rate="50/SqY", uoM="KG",
+                    salesTaxApplicable=0)
+        self.assertIn("0060", self._codes(p))
+        p["items"][0]["uoM"] = "SqY"
+        self.assertNotIn("0060", self._codes(p))
+
+    def test_0061_fed_services_bill_uom(self):
+        p = self._p(saleType="Services (FED in ST Mode)", rate="200/bill",
+                    uoM="KG", salesTaxApplicable=0)
+        self.assertIn("0061", self._codes(p))
+        p["items"][0]["uoM"] = "Bill of lading"
+        self.assertNotIn("0061", self._codes(p))
+
+    def test_0002_0003_registration_format(self):
+        p = self._p()
+        p["buyerNTNCNIC"] = "12AB"            # na 7-digit NTN na 13-digit CNIC
+        self.assertIn("0002", self._codes(p))
+        p = self._p()
+        p["sellerNTNCNIC"] = "12"
+        self.assertIn("0108", self._codes(p))     # seller format = 0108
+        p = self._p()
+        p["invoiceType"] = "Bogus Type"
+        self.assertIn("0003", self._codes(p))     # 0003 = invoice type
+
+    def test_0077_sro_needed_when_rate_not_18(self):
+        p = self._p(saleType="Telecommunication services", rate="17%",
+                    salesTaxApplicable=17, sroScheduleNo="")
+        self.assertIn("0077", self._codes(p))
