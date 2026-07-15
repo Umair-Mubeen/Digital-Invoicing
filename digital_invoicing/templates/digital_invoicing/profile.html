@@ -72,13 +72,36 @@
           <input name="address" required maxlength="500" placeholder="Business address"
                  value="{{ editing.address|default:'' }}"></div>
         <div class="field"><label>FBR Token <span style="text-transform:none;font-weight:400;color:var(--faint)">(PRAL se — optional)</span></label>
-          <input name="fbr_token" value="{{ editing.fbr_token|default:'' }}" autocomplete="off"
-                 placeholder="Bearer token (na ho to mock mode)"
-                 style="font-family:ui-monospace,monospace;font-size:12px"></div>
-        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:14px;cursor:pointer">
-          <input type="checkbox" name="use_sandbox" {% if editing.use_sandbox|default:True %}checked{% endif %}>
+          {% if editing and editing.token_masked %}
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span style="background:#eaf7f1;border:1px solid #bfe6d4;color:var(--green-d);border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:700">✓ Token set</span>
+              <span class="num" style="color:var(--muted);font-size:12px">{{ editing.token_masked }}</span>
+            </div>
+          {% endif %}
+          <input name="fbr_token" type="password" value="" autocomplete="new-password"
+                 placeholder="{% if editing and editing.token_masked %}Naya token daalein (khali = purana barqarar){% else %}Bearer token (na ho to mock mode){% endif %}"
+                 style="font-family:ui-monospace,monospace;font-size:12px">
+          {% if editing and editing.token_masked %}
+          <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--danger);margin-top:7px;cursor:pointer">
+            <input type="checkbox" name="remove_token"> Token remove karein (FBR submissions band ho jayengi)
+          </label>
+          {% endif %}
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:6px;cursor:pointer">
+          <input type="checkbox" name="use_sandbox" id="sbx" {% if editing.use_sandbox|default:True %}checked{% endif %}>
           Sandbox (testing) mode
         </label>
+        <div id="modeWarn" style="display:none;background:#fdf6e1;border:1px solid #ecd9a0;color:#8a6508;border-radius:8px;padding:9px 11px;font-size:12px;font-weight:600;margin-bottom:14px">
+          ⚠ Production mode — is business ki invoices FBR par ASAL jama hongi (cancel sirf 72 ghante mein IRIS se).
+        </div>
+        <script>
+        (function(){
+          const cb=document.getElementById('sbx'), w=document.getElementById('modeWarn');
+          if(!cb||!w) return;
+          const upd=()=>{ w.style.display = cb.checked ? 'none' : ''; };
+          cb.addEventListener('change', upd); upd();
+        })();
+        </script>
         <button type="submit" class="btn-g" style="width:100%;padding:11px;font-size:14px;font-weight:700">
           {% if editing %}Update Business{% else %}Add Business{% endif %}</button>
         {% if editing %}<a href="{% url 'digital_invoicing:profile' %}" style="display:block;text-align:center;margin-top:10px;color:var(--muted);font-size:12.5px">Cancel edit</a>{% endif %}

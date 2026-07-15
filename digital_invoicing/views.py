@@ -534,6 +534,18 @@ def seller_profile(request):
             "use_sandbox": request.POST.get("use_sandbox") == "on",
         }
         if editing:
+            # Token semantics (footgun fix): field khali chhorna = purana
+            # token barqarar. Delete SIRF explicit "remove_token" se.
+            # (Form ab ciphertext blob render nahi karta.)
+            new_token = data.pop("fbr_token")
+            if request.POST.get("remove_token") == "on":
+                editing.fbr_token = ""
+                log_event(request, "token_removed",
+                          business_name=editing.business_name)
+            elif new_token:
+                editing.fbr_token = new_token
+                log_event(request, "token_updated",
+                          business_name=editing.business_name)
             for k, v in data.items():
                 setattr(editing, k, v)
             editing.save()

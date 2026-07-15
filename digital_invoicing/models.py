@@ -255,6 +255,14 @@ class SellerProfile(models.Model):
         super().save(*args, **kwargs)
 
     @property
+    def token_masked(self):
+        """UI ke liye safe hint — poora token kabhi render na ho."""
+        t = self.fbr_token_plain or ""
+        if not t:
+            return ""
+        return ("•" * 8) + t[-4:] if len(t) > 4 else "•" * 8
+
+    @property
     def fbr_token_plain(self):
         from .crypto import decrypt
         return decrypt(self.fbr_token)
@@ -274,6 +282,8 @@ class AuditLog(models.Model):
         ("item_cancelled", "Invoice item cancelled"),
         ("item_edited", "Invoice item edited"),
         ("invoices_exported", "Invoice list exported"),
+        ("token_updated", "FBR token updated"),
+        ("token_removed", "FBR token removed"),
     ]
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                              on_delete=models.SET_NULL, related_name="audit_logs")

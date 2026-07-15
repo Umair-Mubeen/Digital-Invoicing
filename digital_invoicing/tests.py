@@ -2146,3 +2146,62 @@ class ReportsUITests(TestCase):
         rows = ReportService(self.user).sale_type_report(period=self.period)
         self.assertNotIn("Petroleum Products",
                          {r["sale_type"] for r in rows})
+
+
+class SettingsUITests(TestCase):
+    """UI sprint — settings/profile screen (token handling footgun fix)."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user("setui", password="x")
+        self.p = SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="Acme",
+            province="Sindh", address="K", fbr_token="REAL_TOKEN_ABCD",
+            use_sandbox=True)
+        self.client.login(username="setui", password="x")
+
+    def _post(self, **extra):
+        data = {"edit_id": self.p.pk, "ntn_cnic": "1234567",
+                "business_name": "Acme", "province": "Sindh",
+                "address": "K", "fbr_token": "", "use_sandbox": "on"}
+        data.update(extra)
+        return self.client.post("/digital-invoicing/profile/", data)
+
+    def test_token_never_rendered_in_html(self):
+        r = self.client.get(f"/digital-invoicing/profile/?edit={self.p.pk}")
+        body = r.content.decode()
+        self.assertNotIn("REAL_TOKEN_ABCD", body)      # plaintext nahi
+        self.assertNotIn("enc$", body)                  # ciphertext blob bhi nahi
+        self.assertIn("✓ Token set", body)              # sirf status
+        self.assertIn("••••••••ABCD", body)             # last-4 hint
+
+    def test_blank_token_keeps_existing(self):
+        self._post(fbr_token="")                        # field khali chhoda
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.fbr_token_plain, "REAL_TOKEN_ABCD")
+
+    def test_new_token_replaces(self):
+        self._post(fbr_token="NEW_TOKEN_9999")
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.fbr_token_plain, "NEW_TOKEN_9999")
+
+    def test_explicit_remove_clears_token(self):
+        self._post(remove_token="on")
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.fbr_token_plain, "")
+
+    def test_token_masked_property(self):
+        self.assertEqual(self.p.token_masked, "••••••••ABCD")
+        self.p.fbr_token = ""
+        self.assertEqual(self.p.token_masked, "")
+
+    def test_production_warning_present(self):
+        r = self.client.get(f"/digital-invoicing/profile/?edit={self.p.pk}")
+        self.assertContains(r, "Production mode")
+        self.assertContains(r, "ASAL jama hongi")
+
+    def test_other_fields_still_save(self):
+        self._post(business_name="Acme Renamed", address="New Address")
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.business_name, "Acme Renamed")
+        self.assertEqual(self.p.fbr_token_plain, "REAL_TOKEN_ABCD")
