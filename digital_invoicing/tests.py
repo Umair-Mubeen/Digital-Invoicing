@@ -1924,3 +1924,225 @@ class BuyersUITests(TestCase):
                              registration_type="Registered", province="Sindh")
         r = self.client.get("/digital-invoicing/buyers/")
         self.assertContains(r, "2 buyers")             # doosre user ka nahi gina
+
+
+class ProductsUITests(TestCase):
+    """UI sprint — products screen + sale-type dropdown compliance fix."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from .models import Product
+        self.user = User.objects.create_user("produi", password="x")
+        SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K")
+        Product.objects.create(owner=self.user, name="Cement Bag",
+                               hs_code="6810.1100",
+                               sale_type="Cement /Concrete Block",
+                               default_price=1200, track_stock=True)
+        Product.objects.create(owner=self.user, name="Old Item",
+                               sale_type="Goods at standard rate",  # legacy
+                               default_price=100, track_stock=False)
+        self.client.login(username="produi", password="x")
+
+    def test_dropdown_has_official_24_types(self):
+        r = self.client.get("/digital-invoicing/products/")
+        self.assertContains(r, "Goods at standard rate (default)")
+        self.assertContains(r, "Potassium Chlorate")
+        self.assertContains(r, "Petroleum Products")
+        self.assertContains(r, "Steel melting and re-rolling")
+
+    def test_legacy_value_preserved_when_editing(self):
+        from .models import Product
+        old = Product.objects.get(name="Old Item")
+        r = self.client.get(f"/digital-invoicing/products/?edit={old.pk}")
+        # Legacy stored value dropdown mein selected option ke tor par mile
+        self.assertContains(r, "<option selected>Goods at standard rate</option>")
+
+    def test_stats_and_widgets(self):
+        r = self.client.get("/digital-invoicing/products/")
+        self.assertContains(r, "2 products")
+        self.assertContains(r, "1 stock-tracked")
+        self.assertContains(r, "without HS code")     # Old Item ka HS khali
+        self.assertContains(r, "exportCSV")
+        self.assertContains(r, "sortT(0")
+        self.assertContains(r, "FBR error 0019")      # HS live check
+
+
+class InvoiceListUITests(TestCase):
+    """UI sprint — invoices list screen."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from django.utils import timezone
+        from datetime import date
+        self.user = User.objects.create_user("listui", password="x")
+        self.profile = SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K")
+        Invoice.objects.create(
+            owner=self.user, seller_profile=self.profile,
+            invoice_type="Sale Invoice", invoice_date=date.today(),
+            buyer_business_name="Alpha", buyer_registration_type="Registered",
+            total_value=1000, total_sales_tax=180, total_further_tax=40,
+            invoice_total=1220, status="valid", submitted_at=timezone.now(),
+            fbr_invoice_number="1234567890-1")
+        Invoice.objects.create(
+            owner=self.user, seller_profile=self.profile,
+            invoice_type="Sale Invoice", invoice_date=date.today(),
+            buyer_business_name="Beta", buyer_registration_type="Registered",
+            total_value=500, total_sales_tax=90, invoice_total=590,
+            status="pending_retry")
+        self.client.login(username="listui", password="x")
+
+    def test_all_statuses_in_filter(self):
+        r = self.client.get("/digital-invoicing/invoices/")
+        # Naye statuses (Milestone 3/5) ab filter mein hain
+        self.assertContains(r, 'value="pending_retry"')
+        self.assertContains(r, 'value="partially_edited"')
+        self.assertContains(r, "Partially Edited &amp; Cancelled")
+
+    def test_filtered_totals_chips(self):
+        r = self.client.get("/digital-invoicing/invoices/")
+        self.assertContains(r, "2 invoices")
+        self.assertContains(r, "Rs 1,500")      # 1000 + 500
+        self.assertContains(r, "Sales tax")
+        # Filter lagne par totals badlein
+        r = self.client.get("/digital-invoicing/invoices/?status=valid")
+        self.assertContains(r, "1 invoice")
+        self.assertContains(r, "Rs 1,000")
+
+    def test_csv_export_respects_filters(self):
+        r = self.client.get("/digital-invoicing/invoices.csv?status=valid")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("text/csv", r["Content-Type"])
+        body = r.content.decode("utf-8")
+        self.assertIn("1234567890-1", body)
+        self.assertIn("Alpha", body)
+        self.assertNotIn("Beta", body)          # filter respected
+
+    def test_csv_owner_isolation(self):
+        from django.contrib.auth.models import User
+        other = User.objects.create_user("listui2", password="x")
+        p2 = SellerProfile.objects.create(
+            user=other, ntn_cnic="7777777", business_name="Other",
+            province="Sindh", address="K")
+        Invoice.objects.create(
+            owner=other, seller_profile=p2, invoice_type="Sale Invoice",
+            invoice_date="2026-07-01", buyer_business_name="GhostBuyer",
+            buyer_registration_type="Registered", status="valid")
+        r = self.client.get("/digital-invoicing/invoices.csv")
+        self.assertNotIn("GhostBuyer", r.content.decode("utf-8"))
+
+
+class InvoiceCreateUITests(TestCase):
+    """UI sprint — invoice create screen (error panel, draft, shortcuts)."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user("crui", password="x")
+        SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K")
+        self.client.login(username="crui", password="x")
+
+    def test_create_screen_has_new_ux(self):
+        r = self.client.get("/digital-invoicing/create/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="errPanel"')       # error panel
+        self.assertContains(r, "showErrPanel")
+        self.assertContains(r, "DRAFT_KEY")            # local draft autosave
+        self.assertContains(r, "restoreDraft")
+        self.assertContains(r, "Alt+N")                # shortcut hint on Clear
+        self.assertContains(r, "ERR_HELP")             # friendly error help
+
+    def test_no_alert_for_validation_errors(self):
+        r = self.client.get("/digital-invoicing/create/")
+        body = r.content.decode()
+        self.assertNotIn("alert('✗ Validation failed", body)
+
+    def test_error_help_covers_key_codes(self):
+        r = self.client.get("/digital-invoicing/create/")
+        body = r.content.decode()
+        for code in ["0044", "0062", "0097", "0102", "0104", "0105"]:
+            self.assertIn(f'"{code}":', body)
+
+    def test_single_script_block_no_sidebar_leak(self):
+        r = self.client.get("/digital-invoicing/create/")
+        body = r.content.decode()
+        nav_end = body.find('class="main"')
+        self.assertNotIn("DRAFT_KEY", body[:nav_end] if nav_end > 0 else "")
+
+
+class ReportsUITests(TestCase):
+    """UI sprint — reports screen (Annex-C sale-type breakdown, nav, print)."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from django.utils import timezone
+        from datetime import date
+        self.user = User.objects.create_user("repui", password="x")
+        self.profile = SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K")
+        self.period = date.today().strftime("%Y-%m")
+        inv = Invoice.objects.create(
+            owner=self.user, seller_profile=self.profile,
+            invoice_type="Sale Invoice", invoice_date=date.today(),
+            buyer_business_name="Alpha", buyer_registration_type="Registered",
+            total_value=1000, total_sales_tax=180, invoice_total=1180,
+            status="valid", submitted_at=timezone.now())
+        InvoiceItem.objects.create(
+            invoice=inv, hs_code="0101.2100", product_description="A",
+            sale_type="Goods at standard rate (default)", quantity=1,
+            value_excl_st=1000, sales_tax=180, rate="18%")
+        InvoiceItem.objects.create(
+            invoice=inv, hs_code="6810.1100", product_description="Cement",
+            sale_type="Cement /Concrete Block", quantity=12,
+            value_excl_st=123, sales_tax=36, rate="Rs.3",
+            item_status="cancelled")     # cancelled — report se bahar
+        self.client.login(username="repui", password="x")
+
+    def test_sale_type_breakdown_rendered(self):
+        r = self.client.get(f"/digital-invoicing/reports/?period={self.period}")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Sale type breakdown")
+        self.assertContains(r, "Goods at standard rate (default)")
+
+    def test_cancelled_items_excluded_from_report(self):
+        from .services import ReportService
+        rows = ReportService(self.user).sale_type_report(period=self.period)
+        types = {r["sale_type"] for r in rows}
+        self.assertIn("Goods at standard rate (default)", types)
+        self.assertNotIn("Cement /Concrete Block", types)   # cancelled
+
+    def test_period_nav_and_print(self):
+        r = self.client.get("/digital-invoicing/reports/?period=2026-01")
+        self.assertContains(r, "period=2025-12")     # prev (year rollover)
+        self.assertContains(r, "period=2026-02")     # next
+        self.assertContains(r, "window.print()")
+        self.assertContains(r, "@media print")
+
+    def test_thousand_separators(self):
+        r = self.client.get(f"/digital-invoicing/reports/?period={self.period}")
+        self.assertContains(r, "Rs 1,000")
+
+    def test_report_owner_isolation(self):
+        from django.contrib.auth.models import User
+        from datetime import date
+        other = User.objects.create_user("repui2", password="x")
+        p2 = SellerProfile.objects.create(
+            user=other, ntn_cnic="7777777", business_name="O",
+            province="Sindh", address="K")
+        inv = Invoice.objects.create(
+            owner=other, seller_profile=p2, invoice_type="Sale Invoice",
+            invoice_date=date.today(), buyer_business_name="Ghost",
+            buyer_registration_type="Registered", status="valid")
+        InvoiceItem.objects.create(
+            invoice=inv, hs_code="0101.2100", product_description="Ghost",
+            sale_type="Petroleum Products", quantity=1, value_excl_st=9999,
+            sales_tax=143, rate="1.43%")
+        from .services import ReportService
+        rows = ReportService(self.user).sale_type_report(period=self.period)
+        self.assertNotIn("Petroleum Products",
+                         {r["sale_type"] for r in rows})

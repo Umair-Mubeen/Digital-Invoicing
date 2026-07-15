@@ -180,11 +180,9 @@ def invoice_modification_eligibility(request, pk):
 
 
 
-@login_required
-def invoice_list(request):
-    """Server-rendered invoice list — search + status filter + pagination.
-    Data isolation: SIRF request.user ki invoices (owner filter)."""
-    from django.core.paginator import Paginator
+def _filter_invoices(request):
+    """Shared list/CSV filtering — ek hi jagah rules (koi duplication nahi).
+    Returns (queryset, filters_dict). Data isolation: owner=request.user."""
     from django.db.models import Q
 
     # Perf: fbr_payload/fbr_response bade JSON blobs hain — list mein load
@@ -212,6 +210,26 @@ def invoice_list(request):
         qs = qs.filter(invoice_date__gte=date_from)
     if date_to:
         qs = qs.filter(invoice_date__lte=date_to)
+    return qs, {"q": q, "status": status, "biz": biz, "itype": itype,
+                "date_from": date_from, "date_to": date_to}
+
+
+@login_required
+def invoice_list(request):
+    """Server-rendered invoice list — search + status filter + pagination.
+    Data isolation: SIRF request.user ki invoices (owner filter)."""
+    from django.core.paginator import Paginator
+    from django.db.models import Sum
+
+    qs, f = _filter_invoices(request)
+    q, status, biz = f["q"], f["status"], f["biz"]
+    itype, date_from, date_to = f["itype"], f["date_from"], f["date_to"]
+
+    # Filtered totals (chips) — ek query
+    agg = qs.aggregate(v=Sum("total_value"), st=Sum("total_sales_tax"),
+                       ft=Sum("total_further_tax"))
+    lstats = {"value": agg["v"] or 0, "st": agg["st"] or 0,
+              "ft": agg["ft"] or 0}
 
     paginator = Paginator(qs, 20)
     page = paginator.get_page(request.GET.get("page"))
@@ -223,8 +241,33 @@ def invoice_list(request):
         "itype": itype, "date_from": date_from, "date_to": date_to,
         "qstring": qsdict.urlencode(),
         "total": paginator.count,
+        "lstats": lstats,
+        "status_choices": Invoice.STATUS,
         "businesses": SellerProfile.objects.filter(user=request.user).order_by("business_name"),
     })
+
+
+@login_required
+def invoice_list_csv(request):
+    """Filtered invoice list ka CSV — wahi filters jo screen par lage hain."""
+    import csv as _csv
+    from django.http import HttpResponse
+    qs, f = _filter_invoices(request)
+    resp = HttpResponse(content_type="text/csv; charset=utf-8")
+    resp["Content-Disposition"] = 'attachment; filename="invoices.csv"'
+    resp.write("\ufeff")          # Excel UTF-8 BOM
+    w = _csv.writer(resp)
+    w.writerow(["Invoice Date", "FBR Invoice Number", "Type", "Buyer",
+                "Buyer NTN/CNIC", "Status", "Value excl. ST", "Sales Tax",
+                "Further Tax", "Invoice Total"])
+    for inv in qs.order_by("-invoice_date", "-id")[:5000]:
+        w.writerow([inv.invoice_date, inv.fbr_invoice_number or "",
+                    inv.invoice_type, inv.buyer_business_name,
+                    inv.buyer_ntn_cnic or "", inv.get_status_display(),
+                    inv.total_value, inv.total_sales_tax,
+                    inv.total_further_tax, inv.invoice_total])
+    log_event(request, "invoices_exported", rows=qs.count())
+    return resp
 
 
 @login_required
@@ -586,6 +629,24 @@ def logout_view(request):
 
 
 
+def _period_nav(period):
+    """Reports ke liye prev/next month strings (typing kam — 1 click)."""
+    from datetime import date
+    try:
+        y, m = int(period[:4]), int(period[5:7])
+    except (ValueError, IndexError):
+        t = date.today()
+        y, m = t.year, t.month
+    prev = (y - 1, 12) if m == 1 else (y, m - 1)
+    nxt = (y + 1, 1) if m == 12 else (y, m + 1)
+    today = date.today()
+    return {
+        "prev": "%04d-%02d" % prev, "next": "%04d-%02d" % nxt,
+        "label": date(y, m, 1).strftime("%B %Y"),
+        "is_current": (y, m) == (today.year, today.month),
+    }
+
+
 @login_required
 def reports(request):
     """Tax reports — return-filing ready (Phase 14)."""
@@ -608,6 +669,8 @@ def reports(request):
         "summary": summary,
         "buyers": svc.buyer_report(business_id, period),
         "statuses": svc.status_report(business_id, period),
+        "by_sale_type": svc.sale_type_report(business_id, period),
+        "period_nav": _period_nav(period),
         "input_tax": input_tax,
         "net_payable": float(summary["totals"]["st"] or 0)
                        - float(input_tax["input_tax"] or 0),
@@ -706,6 +769,17 @@ def products(request):
         "items": items, "editing": editing,
         "q": pq, "cat": cat, "stype": stype,
         "categories": Category.objects.filter(owner=request.user),
+        "pstats": {
+            "total": Product.objects.filter(owner=request.user).count(),
+            "tracked": Product.objects.filter(owner=request.user,
+                                              track_stock=True).count(),
+            "out": sum(1 for x in items if x.track_stock and (x.stock or 0) <= 0),
+            "no_hs": Product.objects.filter(owner=request.user,
+                                            hs_code="").count(),
+        },
+        "official_sale_types": [n for n in __import__(
+            "digital_invoicing.tax_engine", fromlist=["SALE_TYPES"]
+        ).SALE_TYPES],
         "sale_types": Product.objects.filter(owner=request.user)
                              .values_list("sale_type", flat=True).distinct(),
     })

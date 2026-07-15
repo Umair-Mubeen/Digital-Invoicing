@@ -5,6 +5,14 @@
 {% block di_subtitle %}Return-filing ready — only VALID invoices count in the tax summary{% endblock %}
 
 {% block di_head %}
+<style>
+@media print{
+  nav, .topbar, .no-print, form, .btn-g, canvas { display:none !important; }
+  .main, body { margin:0 !important; padding:0 !important; background:#fff !important; }
+  .card, .chartcard, .stat { break-inside:avoid; box-shadow:none !important; border:1px solid #ddd !important; }
+  a[href]:after { content:"" !important; }
+}
+</style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 {% endblock %}
 
@@ -16,9 +24,15 @@
       <option value="{{ b.pk }}" {% if biz == b.pk|stringformat:"s" %}selected{% endif %}>{{ b.business_name }}</option>
     {% endfor %}
   </select>
+  <a class="fbtn" href="?biz={{ biz }}&period={{ period_nav.prev }}" title="Previous month"
+     style="background:#fff;color:var(--navy);border:1px solid var(--line);text-decoration:none;padding:8px 12px;border-radius:8px;font-weight:700">‹</a>
   <input type="month" name="period" value="{{ period }}"
          style="padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+  <a class="fbtn" href="?biz={{ biz }}&period={{ period_nav.next }}" title="Next month"
+     style="background:#fff;color:var(--navy);border:1px solid var(--line);text-decoration:none;padding:8px 12px;border-radius:8px;font-weight:700">›</a>
   <button class="btn-g" type="submit">Apply</button>
+  <button type="button" class="btn-g no-print" onclick="window.print()"
+     style="background:#fff;color:var(--navy);border:1px solid var(--line)">🖨 Print</button>
   <a class="btn-g" style="background:var(--navy)"
      href="{% url 'digital_invoicing:sales_register_csv' %}?biz={{ biz }}&period={{ period }}">
      ⬇ Sales Register CSV (Annex-C style)</a>
@@ -28,16 +42,16 @@
   <div class="stat"><div><div class="lbl">Valid invoices</div>
     <div class="val">{{ summary.totals.n }}</div></div></div>
   <div class="stat"><div><div class="lbl">Taxable value</div>
-    <div class="val">Rs {{ summary.totals.value|floatformat:0 }}</div></div></div>
+    <div class="val">Rs {{ summary.totals.value|floatformat:"0g" }}</div></div></div>
   <div class="stat"><div><div class="lbl">Sales tax</div>
-    <div class="val">Rs {{ summary.totals.st|floatformat:0 }}</div></div></div>
+    <div class="val">Rs {{ summary.totals.st|floatformat:"0g" }}</div></div></div>
   <div class="stat"><div><div class="lbl">Further tax</div>
-    <div class="val">Rs {{ summary.totals.ft|floatformat:0 }}</div></div></div>
+    <div class="val">Rs {{ summary.totals.ft|floatformat:"0g" }}</div></div></div>
   <div class="stat"><div><div class="lbl">Input tax (purchases)</div>
-    <div class="val">Rs {{ input_tax.input_tax|floatformat:0 }}</div>
+    <div class="val">Rs {{ input_tax.input_tax|floatformat:"0g" }}</div>
     <div class="sub2">{{ input_tax.n }} purchase(s)</div></div></div>
   <div class="stat"><div><div class="lbl">Net ST payable (output − input)</div>
-    <div class="val">Rs {{ net_payable|floatformat:0 }}</div></div></div>
+    <div class="val">Rs {{ net_payable|floatformat:"0g" }}</div></div></div>
 </div>
 
 
@@ -62,6 +76,27 @@ new Chart(document.getElementById('chTax'), {
 </script>
 
 <div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">Sale type breakdown — {{ period_nav.label }}</h3>
+  <div class="hint" style="margin-bottom:8px">FBR return (Annex-C) ke liye — cancelled items shamil nahi</div>
+  <table style="width:100%;border-collapse:collapse">
+    <tr style="text-align:left;color:var(--muted)">
+      <th style="padding:8px 6px">Sale Type</th><th>Rate</th><th>Items</th>
+      <th class="num">Value</th><th class="num">Sales Tax</th><th class="num">Further Tax</th></tr>
+    {% for r in by_sale_type %}
+      <tr style="border-top:1px solid var(--line)">
+        <td style="padding:8px 6px;font-size:12.5px">{{ r.sale_type }}</td>
+        <td class="num" style="font-size:12px">{{ r.rate|default:"—" }}</td>
+        <td>{{ r.n }}</td>
+        <td class="num">Rs {{ r.value|floatformat:"0g" }}</td>
+        <td class="num">Rs {{ r.st|floatformat:"0g" }}</td>
+        <td class="num">Rs {{ r.ft|floatformat:"0g" }}</td></tr>
+    {% empty %}
+      <tr><td colspan="6" style="padding:14px 6px;color:var(--muted)">Is period mein koi valid supply nahi.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card" style="margin-bottom:20px">
   <h3 style="margin-top:0">Invoice type breakdown — {{ period }}</h3>
   <table style="width:100%;border-collapse:collapse">
     <tr style="text-align:left;color:var(--muted)">
@@ -70,9 +105,9 @@ new Chart(document.getElementById('chTax'), {
     {% for r in summary.by_type %}
       <tr style="border-top:1px solid var(--line)">
         <td style="padding:8px 6px">{{ r.invoice_type }}</td><td>{{ r.n }}</td>
-        <td class="num">Rs {{ r.value|floatformat:0 }}</td>
-        <td class="num">Rs {{ r.st|floatformat:0 }}</td>
-        <td class="num">Rs {{ r.ft|floatformat:0 }}</td></tr>
+        <td class="num">Rs {{ r.value|floatformat:"0g" }}</td>
+        <td class="num">Rs {{ r.st|floatformat:"0g" }}</td>
+        <td class="num">Rs {{ r.ft|floatformat:"0g" }}</td></tr>
     {% empty %}
       <tr><td colspan="5" style="padding:14px 6px;color:var(--muted)">No valid invoices in this period.</td></tr>
     {% endfor %}
@@ -90,9 +125,9 @@ new Chart(document.getElementById('chTax'), {
         <td style="padding:8px 6px">{{ b.buyer_business_name }}</td>
         <td>{{ b.buyer_ntn_cnic|default:"—" }}</td>
         <td>{{ b.buyer_registration_type }}</td><td>{{ b.n }}</td>
-        <td class="num">Rs {{ b.value|floatformat:0 }}</td>
-        <td class="num">Rs {{ b.st|floatformat:0 }}</td>
-        <td class="num">Rs {{ b.ft|floatformat:0 }}</td></tr>
+        <td class="num">Rs {{ b.value|floatformat:"0g" }}</td>
+        <td class="num">Rs {{ b.st|floatformat:"0g" }}</td>
+        <td class="num">Rs {{ b.ft|floatformat:"0g" }}</td></tr>
     {% empty %}
       <tr><td colspan="7" style="padding:14px 6px;color:var(--muted)">No data.</td></tr>
     {% endfor %}
@@ -108,7 +143,7 @@ new Chart(document.getElementById('chTax'), {
       <tr style="border-top:1px solid var(--line)">
         <td style="padding:8px 6px"><span class="pill {{ r.status }}">{{ r.status }}</span></td>
         <td>{{ r.n }}</td>
-        <td class="num">Rs {{ r.value|floatformat:0 }}</td></tr>
+        <td class="num">Rs {{ r.value|floatformat:"0g" }}</td></tr>
     {% empty %}
       <tr><td colspan="3" style="padding:14px 6px;color:var(--muted)">No data.</td></tr>
     {% endfor %}

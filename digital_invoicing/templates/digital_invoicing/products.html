@@ -13,12 +13,10 @@
     <input name="sku" placeholder="SKU" value="{{ editing.sku|default:'' }}" style="padding:8px;border:1px solid var(--line);border-radius:8px">
     <input name="hs_code" placeholder="HS Code (0101.2100)" value="{{ editing.hs_code|default:'' }}" style="padding:8px;border:1px solid var(--line);border-radius:8px">
     <select name="sale_type" style="padding:8px;border:1px solid var(--line);border-radius:8px">
-      <option {% if editing.sale_type == 'Goods at standard rate' or not editing %}selected{% endif %}>Goods at standard rate</option>
-      <option {% if editing.sale_type == 'Goods at reduced rate' %}selected{% endif %}>Goods at reduced rate</option>
-      <option {% if editing.sale_type == '3rd Schedule Goods' %}selected{% endif %}>3rd Schedule Goods</option>
-      <option {% if editing.sale_type == 'Exempt Goods' %}selected{% endif %}>Exempt Goods</option>
-      <option {% if editing.sale_type == 'Zero-rated Goods' %}selected{% endif %}>Zero-rated Goods</option>
-      <option {% if editing.sale_type == 'Services' %}selected{% endif %}>Services</option>
+      {% if editing and editing.sale_type and editing.sale_type not in official_sale_types %}
+      <option selected>{{ editing.sale_type }}</option>{% endif %}
+      {% for st in official_sale_types %}
+      <option {% if editing.sale_type == st %}selected{% elif not editing and st == 'Goods at standard rate (default)' %}selected{% endif %}>{{ st }}</option>{% endfor %}
     </select>
     <input name="uom" placeholder="UoM" value="{{ editing.uom|default:'Numbers, pieces, units' }}" style="padding:8px;border:1px solid var(--line);border-radius:8px">
     <input name="default_price" type="number" step="0.01" placeholder="Price (excl. ST)" value="{{ editing.default_price|default:'' }}" style="padding:8px;border:1px solid var(--line);border-radius:8px">
@@ -39,21 +37,75 @@
     {% for st in sale_types %}<option {% if stype == st %}selected{% endif %}>{{ st }}</option>{% endfor %}
   </select>
   <button class="fbtn" type="submit">Filter</button>
+  <button class="fbtn" type="button" onclick="exportCSV()" style="background:#fff;color:var(--navy);border:1px solid var(--line)">⬇ CSV</button>
   {% if q or cat or stype %}<a class="fclear" href="{% url 'digital_invoicing:products' %}">✕ Clear</a>{% endif %}
 </form>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px">
+  <span style="background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;box-shadow:var(--shadow)">{{ pstats.total }} products</span>
+  <span style="background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;box-shadow:var(--shadow)">{{ pstats.tracked }} stock-tracked</span>
+  {% if pstats.out %}<span style="background:#fdecea;border:1px solid #f3c9c9;color:var(--danger);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:700">⚠ {{ pstats.out }} out of stock</span>{% endif %}
+  {% if pstats.no_hs %}<span style="background:#fdf6e1;border:1px solid #ecd9a0;color:#8a6508;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:700">{{ pstats.no_hs }} without HS code</span>{% endif %}
+</div>
 
 <div class="card">
   <table style="width:100%;border-collapse:collapse">
-    <tr style="text-align:left;color:var(--muted)"><th style="padding:8px 6px">Name</th><th>SKU</th><th>HS</th><th>Sale Type</th><th class="num">Price</th><th class="num">Stock</th><th></th></tr>
+    <tbody>
+    <tr style="text-align:left;color:var(--muted)">
+      <th style="padding:8px 6px;cursor:pointer" onclick="sortT(0,this)">Name ⇅</th><th>SKU</th>
+      <th>HS</th><th style="cursor:pointer" onclick="sortT(3,this)">Sale Type ⇅</th>
+      <th class="num" style="cursor:pointer" onclick="sortT(4,this,1)">Price ⇅</th>
+      <th class="num" style="cursor:pointer" onclick="sortT(5,this,1)">Stock ⇅</th><th></th></tr>
     {% for p in items %}
       <tr style="border-top:1px solid var(--line)">
         <td style="padding:8px 6px;font-weight:600">{{ p.name }}{% if p.category %} <span style="color:var(--muted);font-weight:400">· {{ p.category.name }}</span>{% endif %}</td>
-        <td>{{ p.sku|default:"—" }}</td><td>{{ p.hs_code|default:"—" }}</td><td>{{ p.sale_type }}</td>
+        <td>{{ p.sku|default:"—" }}</td>
+        <td>{% if p.hs_code %}<span class="num">{{ p.hs_code }}</span>{% else %}<span style="color:#8a6508;font-size:11px;font-weight:700" title="Invoice par HS zaroori hai (FBR 0044)">⚠ missing</span>{% endif %}</td>
+        <td style="font-size:12px">{{ p.sale_type }}</td>
         <td class="num">Rs {{ p.default_price|floatformat:0 }}</td>
-        <td class="num">{% if p.track_stock %}{{ p.stock|floatformat:"-2" }}{% else %}—{% endif %}</td>
+        <td class="num">{% if p.track_stock %}{% if p.stock <= 0 %}<span style="color:var(--danger);font-weight:700">{{ p.stock|floatformat:"-2" }}</span>{% else %}{{ p.stock|floatformat:"-2" }}{% endif %}{% else %}—{% endif %}</td>
         <td><a href="?edit={{ p.pk }}" style="color:var(--green-d);font-weight:600;text-decoration:none">Edit</a></td>
       </tr>
     {% empty %}<tr><td colspan="7" style="padding:14px 6px;color:var(--muted)">No products yet — add one above.</td></tr>{% endfor %}
+    </tbody>
   </table>
 </div>
+<script>
+function sortT(col, th, numeric){
+  const tb = th.closest('table').tBodies[0];
+  const dir = th.dataset.dir = (th.dataset.dir === 'a' ? 'd' : 'a');
+  const rows=[...tb.rows].filter(r=>r.cells.length>2 && !r.querySelector('th'));
+  rows.sort((a,b)=>{
+    let x=a.cells[col].innerText.trim(), y=b.cells[col].innerText.trim();
+    if(numeric){ x=parseFloat(x.replace(/[^0-9.-]/g,''))||0; y=parseFloat(y.replace(/[^0-9.-]/g,''))||0;
+      return dir==='a'?x-y:y-x; }
+    return dir==='a' ? x.toLowerCase().localeCompare(y.toLowerCase()) : y.toLowerCase().localeCompare(x.toLowerCase());
+  }).forEach(r=>tb.appendChild(r));
+}
+function exportCSV(){
+  const rows=[["Name","SKU","HS Code","Sale Type","Price","Stock"]];
+  document.querySelectorAll('table tbody tr').forEach(tr=>{
+    if(tr.querySelector('th')||tr.cells.length<6) return;
+    const c=tr.cells;
+    rows.push([c[0].innerText.trim(),c[1].innerText.trim(),
+      c[2].innerText.replace('⚠ missing','').trim(),c[3].innerText.trim(),
+      c[4].innerText.replace(/[Rs, ]/g,''),c[5].innerText.trim()]);
+  });
+  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:'text/csv'}));
+  a.download='products.csv'; a.click();
+}
+const hsIn=document.querySelector('input[name=hs_code]');
+if(hsIn){
+  const h=document.createElement('div');
+  h.style.cssText='font-size:11.5px;margin-top:3px;color:var(--faint)';
+  hsIn.insertAdjacentElement('afterend',h);
+  hsIn.addEventListener('input',()=>{
+    const v=hsIn.value.trim();
+    if(!v){ h.textContent=''; return; }
+    if(/^\d{4}(\.\d{2,4})?$/.test(v)){ h.textContent='✓ Valid HS format'; h.style.color='var(--green-d)'; }
+    else { h.textContent='⚠ Format: 0101.2100 (FBR error 0019 se bachne ke liye)'; h.style.color='#b8860b'; }
+  });
+}
+</script>
 {% endblock %}

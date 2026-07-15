@@ -273,6 +273,7 @@ class AuditLog(models.Model):
         ("invoice_cancelled", "Invoice cancelled"),
         ("item_cancelled", "Invoice item cancelled"),
         ("item_edited", "Invoice item edited"),
+        ("invoices_exported", "Invoice list exported"),
     ]
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                              on_delete=models.SET_NULL, related_name="audit_logs")

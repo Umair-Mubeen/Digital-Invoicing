@@ -46,18 +46,25 @@
   </select>
   <select name="status" class="fsel">
     <option value="">All statuses</option>
-    <option value="valid" {% if status == 'valid' %}selected{% endif %}>✓ Valid</option>
-    <option value="failed" {% if status == 'failed' %}selected{% endif %}>✗ Failed</option>
-    <option value="cancelled" {% if status == 'cancelled' %}selected{% endif %}>Cancelled</option>
-    <option value="draft" {% if status == 'draft' %}selected{% endif %}>Draft</option>
+    {% for key, label in status_choices %}
+    <option value="{{ key }}" {% if status == key %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
   </select>
   <input class="fin" type="date" name="from" value="{{ date_from }}" title="From date">
   <input class="fin" type="date" name="to" value="{{ date_to }}" title="To date">
   <button class="fbtn" type="submit">Filter</button>
+  <a class="fbtn" href="{% url 'digital_invoicing:list_csv' %}{% if qstring %}?{{ qstring }}{% endif %}"
+     style="background:#fff;color:var(--navy);border:1px solid var(--line);text-decoration:none;display:inline-flex;align-items:center">⬇ CSV</a>
   {% if q or status or itype or date_from or date_to or biz %}
     <a class="fclear" href="{% url 'digital_invoicing:list' %}">✕ Clear</a>
   {% endif %}
 </form>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px" aria-label="Filtered totals">
+  <span style="background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;box-shadow:var(--shadow)">{{ total }} invoice{{ total|pluralize }}</span>
+  <span style="background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;box-shadow:var(--shadow)">Value <b class="num">Rs {{ lstats.value|floatformat:"0g" }}</b></span>
+  <span style="background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;box-shadow:var(--shadow)">Sales tax <b class="num">Rs {{ lstats.st|floatformat:"0g" }}</b></span>
+  {% if lstats.ft %}<span style="background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;box-shadow:var(--shadow)">Further tax <b class="num">Rs {{ lstats.ft|floatformat:"0g" }}</b></span>{% endif %}
+</div>
 
 <div class="di-card">
   {% if page.object_list %}
@@ -72,7 +79,7 @@
         <td><span class="fbrno">{{ inv.fbr_invoice_number|default:"—" }}</span></td>
         <td>{{ inv.buyer_business_name }}</td>
         <td>{{ inv.invoice_type }}</td>
-        <td class="num" style="font-weight:600">Rs {{ inv.invoice_total|floatformat:0 }}</td>
+        <td class="num" style="font-weight:600">Rs {{ inv.invoice_total|floatformat:"0g" }}</td>
         <td style="color:var(--muted)">{{ inv.invoice_date }}</td>
         <td><span class="pill {{ inv.status }}">{{ inv.get_status_display }}</span></td>
         <td style="white-space:nowrap">

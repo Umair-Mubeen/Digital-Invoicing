@@ -804,6 +804,25 @@ class ReportService:
         return {"totals": {k: (v or 0) for k, v in agg.items()},
                 "by_type": by_type}
 
+    def sale_type_report(self, business_id=None, period=None):
+        """Sale-type wise output tax — FBR sales tax return (Annex-C) ke
+        liye. Read-only aggregate; koi business logic nahi. Valid +
+        partially-modified invoices ke items (cancelled items chhor kar —
+        Manual v1.6 ke baad wo supply nahi rahe)."""
+        from django.db.models import Sum, Count
+        from .models import InvoiceItem
+        inv_qs = self._base(business_id, period).filter(
+            status__in=("valid", "edited", "partially_edited",
+                        "partially_cancelled", "partially_edited_cancelled"))
+        rows = (InvoiceItem.objects
+                .filter(invoice__in=inv_qs)
+                .exclude(item_status="cancelled")
+                .values("sale_type", "rate")
+                .annotate(n=Count("id"), value=Sum("value_excl_st"),
+                          st=Sum("sales_tax"), ft=Sum("further_tax"))
+                .order_by("-st"))
+        return list(rows)
+
     def buyer_report(self, business_id=None, period=None, limit=100):
         from django.db.models import Sum, Count
         qs = self._base(business_id, period).filter(status="valid")

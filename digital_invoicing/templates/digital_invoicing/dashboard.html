@@ -28,27 +28,27 @@
     <div class="ic" style="background:#e8f0fe;color:#2563eb">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 2h6a2 2 0 0 1 2 2v16l-5-3-5 3V4a2 2 0 0 1 2-2z"/></svg>
     </div>
-    <div><div class="lbl">Today's sales</div><div class="val">Rs {{ today_stats.value|floatformat:0 }}</div>
+    <div><div class="lbl">Today's sales</div><div class="val">Rs {{ today_stats.value|floatformat:"0g" }}</div>
       <div class="sub2">{{ today_stats.count }} invoice{{ today_stats.count|pluralize }} today · {{ m_count }} in {{ month_name }}</div></div>
   </div>
   <div class="stat">
     <div class="ic" style="background:#ede9fe;color:#7c3aed">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
     </div>
-    <div><div class="lbl">Taxable value</div><div class="val">Rs {{ value|floatformat:0 }}</div></div>
+    <div><div class="lbl">Taxable value</div><div class="val">Rs {{ value|floatformat:"0g" }}</div></div>
   </div>
   <div class="stat">
     <div class="ic" style="background:#e7f9f1;color:var(--green-d)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="16 7 21 7 21 12"/></svg>
     </div>
-    <div><div class="lbl">Sales tax</div><div class="val g">Rs {{ sales_tax|floatformat:0 }}</div>
-      <div class="sub2">Rs {{ m_st|floatformat:0 }} in {{ month_name }}</div></div>
+    <div><div class="lbl">Sales tax</div><div class="val g">Rs {{ sales_tax|floatformat:"0g" }}</div>
+      <div class="sub2">Rs {{ m_st|floatformat:"0g" }} in {{ month_name }}</div></div>
   </div>
   <div class="stat">
     <div class="ic" style="background:#fdf3e3;color:#b8860b">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
     </div>
-    <div><div class="lbl">Further tax</div><div class="val">Rs {{ further_tax|floatformat:0 }}</div></div>
+    <div><div class="lbl">Further tax</div><div class="val">Rs {{ further_tax|floatformat:"0g" }}</div></div>
   </div>
 </div>
 
@@ -76,11 +76,11 @@
   </div>
   <div class="chartcard" style="margin:0">
     <h3>Top products</h3>
-    {% for r in top_products %}<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:12.5px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%">{{ r.product_description|truncatechars:24 }}</span><b class="num">Rs {{ r.v|floatformat:0 }}</b></div>{% empty %}<div class="hint">No data yet</div>{% endfor %}
+    {% for r in top_products %}<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:12.5px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%">{{ r.product_description|truncatechars:24 }}</span><b class="num">Rs {{ r.v|floatformat:"0g" }}</b></div>{% empty %}<div class="hint">No data yet</div>{% endfor %}
   </div>
   <div class="chartcard" style="margin:0">
     <h3>Top HS codes</h3>
-    {% for r in top_hs %}<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:12.5px"><span class="num">{{ r.hs_code }}</span><b class="num">Rs {{ r.v|floatformat:0 }}</b></div>{% empty %}<div class="hint">No data yet</div>{% endfor %}
+    {% for r in top_hs %}<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:12.5px"><span class="num">{{ r.hs_code }}</span><b class="num">Rs {{ r.v|floatformat:"0g" }}</b></div>{% empty %}<div class="hint">No data yet</div>{% endfor %}
   </div>
   <div class="chartcard" style="margin:0">
     <h3>Scenarios used</h3>
@@ -146,7 +146,7 @@ new Chart(document.getElementById('chBuyers'), {
       <tr>
         <td><span class="fbrno">{{ inv.fbr_invoice_number }}</span></td>
         <td>{{ inv.buyer_business_name }}</td>
-        <td class="num" style="font-weight:600;color:var(--green-d)">Rs {{ inv.total_sales_tax|floatformat:0 }}</td>
+        <td class="num" style="font-weight:600;color:var(--green-d)">Rs {{ inv.total_sales_tax|floatformat:"0g" }}</td>
         <td style="color:var(--muted)">{{ inv.invoice_date }}</td>
         <td><a href="{% url 'digital_invoicing:print' inv.pk %}" style="color:var(--green-d);font-weight:600;text-decoration:none">🖨</a></td>
       </tr>
