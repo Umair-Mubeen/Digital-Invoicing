@@ -3,7 +3,7 @@
 {% block di_title_text %}Dashboard{% endblock %}
 {% block di_title %}Dashboard{% endblock %}
 {% block di_subtitle %}Compliance snapshot — {{ request.user.username }}{% endblock %}
-{% block di_actions %}<a class="btn-g" href="{% url 'digital_invoicing:create' %}">+ New Invoice</a>{% endblock %}
+{% block di_actions %}<button class="btn-g" style="background:#fff;color:var(--navy);border:1px solid var(--line);box-shadow:var(--shadow)" onclick="location.reload()" aria-label="Refresh dashboard">↻ Refresh</button> <a class="btn-g" href="{% url 'digital_invoicing:create' %}">+ New Invoice</a>{% endblock %}
 
 {% block di_head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
@@ -15,13 +15,21 @@
   <a class="btn-g" style="background:var(--navy);box-shadow:0 6px 16px -6px rgba(10,38,71,.4)" href="{% url 'digital_invoicing:profile' %}">Businesses</a>
   <a class="btn-g" style="background:#fff;color:var(--navy);border:1px solid var(--line);box-shadow:var(--shadow)" href="{% url 'digital_invoicing:activity' %}">Activity log</a>
 </div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px" aria-label="Pending work">
+  {% for key, label, n in action_chips %}{% if n %}
+  <a href="{% url 'digital_invoicing:list' %}?status={{ key }}"
+     style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;text-decoration:none;font-weight:600;font-size:12.5px;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow);color:var(--ink)">
+    <span style="width:8px;height:8px;border-radius:50%;background:{% if key == 'failed' %}var(--danger){% elif key == 'pending_retry' %}#2563eb{% elif key == 'cancelled' %}var(--amber){% else %}var(--faint){% endif %}"></span>
+    {{ n }} {{ label }} →</a>
+  {% endif %}{% endfor %}
+</div>
 <div class="stats">
   <div class="stat">
     <div class="ic" style="background:#e8f0fe;color:#2563eb">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 2h6a2 2 0 0 1 2 2v16l-5-3-5 3V4a2 2 0 0 1 2-2z"/></svg>
     </div>
-    <div><div class="lbl">Invoices posted</div><div class="val">{{ count }}</div>
-      <div class="sub2">{{ m_count }} in {{ month_name }}</div></div>
+    <div><div class="lbl">Today's sales</div><div class="val">Rs {{ today_stats.value|floatformat:0 }}</div>
+      <div class="sub2">{{ today_stats.count }} invoice{{ today_stats.count|pluralize }} today · {{ m_count }} in {{ month_name }}</div></div>
   </div>
   <div class="stat">
     <div class="ic" style="background:#ede9fe;color:#7c3aed">
@@ -54,6 +62,33 @@
     <h3>Invoice status</h3>
     <div class="hint">All invoices — pending work at a glance</div>
     <canvas id="chStatus" height="120"></canvas>
+  </div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-bottom:20px">
+  <div class="chartcard" style="margin:0">
+    <h3>FBR link</h3>
+    <div style="display:flex;align-items:center;gap:8px;margin:10px 0 6px">
+      <span style="width:9px;height:9px;border-radius:50%;background:{% if fbr_status.sandbox %}var(--amber){% else %}var(--green){% endif %}"></span>
+      <b>{% if fbr_status.sandbox %}Sandbox mode{% else %}Production{% endif %}</b>
+    </div>
+    <div class="hint">Last valid: {% if fbr_status.last_valid_at %}{{ fbr_status.last_valid_at|date:"d M, H:i" }}{% else %}—{% endif %}</div>
+    <div class="hint">Retry queue: {{ fbr_status.retry_depth }} invoice{{ fbr_status.retry_depth|pluralize }}</div>
+  </div>
+  <div class="chartcard" style="margin:0">
+    <h3>Top products</h3>
+    {% for r in top_products %}<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:12.5px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%">{{ r.product_description|truncatechars:24 }}</span><b class="num">Rs {{ r.v|floatformat:0 }}</b></div>{% empty %}<div class="hint">No data yet</div>{% endfor %}
+  </div>
+  <div class="chartcard" style="margin:0">
+    <h3>Top HS codes</h3>
+    {% for r in top_hs %}<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:12.5px"><span class="num">{{ r.hs_code }}</span><b class="num">Rs {{ r.v|floatformat:0 }}</b></div>{% empty %}<div class="hint">No data yet</div>{% endfor %}
+  </div>
+  <div class="chartcard" style="margin:0">
+    <h3>Scenarios used</h3>
+    {% for r in scenario_stats %}<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:12.5px"><span class="num">{{ r.scenario_id }}</span><b class="num">{{ r.n }}</b></div>{% empty %}<div class="hint">No data yet</div>{% endfor %}
+  </div>
+  <div class="chartcard" style="margin:0">
+    <h3>Recent activity</h3>
+    {% for a in recent_activity %}<div style="padding:5px 0;border-bottom:1px solid var(--line);font-size:12px"><b>{{ a.get_action_display }}</b><br><span class="hint">{{ a.created_at|date:"d M, H:i" }}</span></div>{% empty %}<div class="hint">No activity yet</div>{% endfor %}
   </div>
 </div>
 <div class="chartcard" style="margin-bottom:20px">

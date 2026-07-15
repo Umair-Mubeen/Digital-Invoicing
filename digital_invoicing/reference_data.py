@@ -414,8 +414,14 @@ class ReferenceSyncService:
         self.client = client or get_reference_client()
 
     def sync_trans_type_ids(self):
+        """Resilient: FBR endpoint down ho to error report hota hai,
+        exception nahi phat'ti (cron aglay run par phir try karega)."""
         from .models import TaxSaleType
-        rows = self.client.trans_types() or []
+        try:
+            rows = self.client.trans_types() or []
+        except Exception as e:
+            return {"matched": [], "unmatched": [],
+                    "fbr_types": 0, "error": f"{e.__class__.__name__}: {e}"}
         by_desc = {r["transactioN_DESC"]: r["transactioN_TYPE_ID"]
                    for r in rows}
         matched, unmatched = [], []
@@ -452,10 +458,20 @@ class ReferenceSyncService:
             cfg = sale_types.get(row.name)
             if cfg is None:
                 continue
-            fbr = self.client.sale_type_to_rate(
-                date=on_date.strftime("%d-%b-%Y"),
-                trans_type_id=row.fbr_trans_type_id,
-                province_id=province_id) or []
+            try:
+                fbr = self.client.sale_type_to_rate(
+                    date=on_date.strftime("%d-%b-%Y"),
+                    trans_type_id=row.fbr_trans_type_id,
+                    province_id=province_id) or []
+            except Exception as e:
+                # Ek type ka failure baqi types ka check nahi rokta
+                report.append({"sale_type": row.name,
+                               "trans_type_id": row.fbr_trans_type_id,
+                               "current": "", "fbr_rates": [],
+                               "drift": False, "auto_applicable": False,
+                               "fbr_raw": [],
+                               "error": f"{e.__class__.__name__}: {e}"})
+                continue
             if not fbr:
                 continue
             current_label = (cfg.get("rate_label")

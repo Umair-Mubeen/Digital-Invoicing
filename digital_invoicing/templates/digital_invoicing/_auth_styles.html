@@ -25,3 +25,46 @@
   .alt a{color:var(--green-d);font-weight:700;text-decoration:none}
   .hint{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.45}
 </style>
+<style>
+  /* ===== Split login (v2) — signup ke purane .auth styles untouched ===== */
+  body.split{display:block;padding:0;background:#fff}
+  .lwrap{display:grid;grid-template-columns:1fr 1fr;min-height:100vh}
+  .lbrand{background:linear-gradient(165deg,#0A2647 0%,#0e3055 60%,#0D9E72 175%);
+    color:#fff;padding:56px 60px;display:flex;flex-direction:column;justify-content:space-between;
+    position:relative;overflow:hidden}
+  .lbrand::after{content:"";position:absolute;right:-120px;bottom:-120px;width:420px;height:420px;
+    border-radius:50%;border:70px solid rgba(255,255,255,.045)}
+  .lbrand .top{display:flex;align-items:center;gap:12px}
+  .lbrand .mark{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#0D9E72,#12c98d);
+    display:grid;place-items:center;font-weight:800;font-size:17px;box-shadow:0 10px 26px -8px rgba(13,158,114,.6)}
+  .lbrand .top b{font-size:18px;display:block;line-height:1.1}
+  .lbrand .top span{color:#57D9AC;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+  .lbrand h2{font-size:30px;line-height:1.25;font-weight:800;margin:0 0 14px;max-width:420px;letter-spacing:-.01em}
+  .lbrand .pts{display:flex;flex-direction:column;gap:14px;margin-top:26px}
+  .lbrand .pt{display:flex;gap:12px;align-items:flex-start;color:#C9D8E9;font-size:14px;line-height:1.5;max-width:400px}
+  .lbrand .pt .tick{width:22px;height:22px;border-radius:7px;background:rgba(13,158,114,.25);
+    border:1px solid rgba(87,217,172,.45);color:#57D9AC;display:grid;place-items:center;
+    font-size:12px;font-weight:800;flex-shrink:0;margin-top:1px}
+  .lbrand .strip{display:flex;gap:26px;border-top:1px solid rgba(255,255,255,.12);padding-top:20px;flex-wrap:wrap}
+  .lbrand .strip b{display:block;font-size:20px}
+  .lbrand .strip span{color:#8FA6C2;font-size:11.5px;font-weight:600;letter-spacing:.03em}
+  .lform{display:grid;place-items:center;padding:40px 24px;background:#F7FAFC}
+  .lcard{width:100%;max-width:392px}
+  .lcard h1{font-size:23px;color:var(--navy);margin:0 0 6px;font-weight:800;letter-spacing:-.01em}
+  .lcard .sub{color:var(--muted);font-size:13.5px;margin-bottom:26px}
+  .lcard .f input{padding:13px 14px;border-radius:11px;background:#fff;border:1.5px solid var(--line);
+    transition:border-color .15s,box-shadow .15s}
+  .lcard .f input:hover{border-color:#c8d6e5}
+  .lcard .f input:focus{border-color:var(--green);box-shadow:0 0 0 4px rgba(13,158,114,.11)}
+  .lcard input:-webkit-autofill{-webkit-box-shadow:0 0 0 40px #fff inset;box-shadow:0 0 0 40px #fff inset}
+  .lcard .bsub{padding:13px;border-radius:11px;font-size:15px;box-shadow:0 10px 24px -8px rgba(13,158,114,.55);
+    transition:transform .12s,box-shadow .12s}
+  .lcard .bsub:hover{transform:translateY(-1px);box-shadow:0 14px 30px -8px rgba(13,158,114,.6)}
+  .lcard .bsub:disabled{transform:none;cursor:default}
+  @media (max-width:900px){
+    .lwrap{grid-template-columns:1fr}
+    .lbrand{padding:28px 26px;gap:20px}
+    .lbrand h2{font-size:21px;margin-bottom:0}
+    .lbrand .pts,.lbrand .strip,.lbrand::after{display:none}
+  }
+</style>

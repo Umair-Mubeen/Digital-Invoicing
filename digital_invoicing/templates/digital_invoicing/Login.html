@@ -1,27 +1,75 @@
 {% extends "base.html" %}
 {% block title %}Login — TaxBuddy Umair Digital Invoicing{% endblock %}
-{% block extra_head %}{% include "digital_invoicing/_auth_styles.html" %}{% endblock %}
+{% block extra_head %}{% include "digital_invoicing/_auth_styles.html" %}
+<style>body{background:#fff !important;display:block !important;padding:0 !important}</style>
+{% endblock %}
 {% block content %}
-<div class="auth">
-  <div class="brand">
-    <div class="mark">TB</div>
-    <div><b>TaxBuddy Umair</b><span>Digital Invoicing</span></div>
-  </div>
-  <h1>Welcome back</h1>
-  <div class="sub">Log in to your account</div>
+<div class="lwrap">
+  <aside class="lbrand">
+    <div class="top">
+      <div class="mark">TB</div>
+      <div><b>TaxBuddy Umair</b><span>Digital Invoicing</span></div>
+    </div>
+    <div>
+      <h2>FBR Digital Invoicing — bina tax rules yaad kiye.</h2>
+      <div class="pts">
+        <div class="pt"><span class="tick">✓</span><span>Sab 28 FBR sandbox scenarios — sale type chunein, tax engine rate, ST aur further tax khud nikalta hai</span></div>
+        <div class="pt"><span class="tick">✓</span><span>45 FBR error checks submit se pehle — ghalat invoice FBR tak jati hi nahi</span></div>
+        <div class="pt"><span class="tick">✓</span><span>Net ka masla? Auto-retry queue khud dobara submit karti hai</span></div>
+      </div>
+    </div>
+    <div class="strip">
+      <div><b>28/28</b><span>PRAL scenarios</span></div>
+      <div><b>45+</b><span>Pre-submit checks</span></div>
+      <div><b>100%</b><span>Audit logged</span></div>
+    </div>
+  </aside>
 
-  {% if form.errors %}<div class="err">Incorrect username or password — please try again.</div>{% endif %}
+  <main class="lform">
+    <div class="lcard">
+      <h1>Welcome back</h1>
+      <div class="sub">Apne account mein log in karein</div>
 
-  <form method="post">
-    {% csrf_token %}
-    {% if locked %}<div style="background:#fdecea;color:#c0392b;border:1px solid #f5c6cb;border-radius:8px;padding:10px;margin-bottom:12px;font-weight:600">{{ locked }}</div>{% endif %}
-    <input type="hidden" name="next" value="{{ next }}">
-    <div class="f"><label>Username</label>
-      <input name="username" required autofocus autocomplete="username"></div>
-    <div class="f"><label>Password</label>
-      <input type="password" name="password" required autocomplete="current-password"></div>
-    <button class="bsub" type="submit">Login</button>
-  </form>
-  <div class="alt">Don't have an account? <a href="{% url 'digital_invoicing:signup' %}">Sign up</a></div>
+      {% if form.errors %}<div class="err">Incorrect username or password — please try again.</div>{% endif %}
+      {% if locked %}<div class="err" style="font-weight:600">{{ locked }}</div>{% endif %}
+
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+        <div class="f"><label for="un">Username</label>
+          <input name="username" id="un" required autofocus autocomplete="username"></div>
+        <div class="f"><label for="pw">Password</label>
+          <div style="position:relative">
+            <input type="password" name="password" id="pw" required autocomplete="current-password" style="width:100%;box-sizing:border-box;padding-right:64px">
+            <button type="button" id="pwToggle" onclick="togglePw()" aria-label="Show password"
+              style="position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:none;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;padding:6px 8px;letter-spacing:.04em">SHOW</button>
+          </div>
+          <div id="capsWarn" class="hint" style="display:none;color:#b8860b;font-weight:600" role="alert">⚠ Caps Lock on hai</div>
+        </div>
+        <button class="bsub" type="submit" id="loginBtn">Login</button>
+      </form>
+      <div class="alt">Don't have an account? <a href="{% url 'digital_invoicing:signup' %}">Sign up</a></div>
+      <div class="hint" style="text-align:center;margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
+        FBR Digital Invoicing integrated · Tokens encrypted at rest · Audit logged</div>
+    </div>
+  </main>
 </div>
+<script>
+function togglePw(){
+  const i=document.getElementById('pw'), b=document.getElementById('pwToggle');
+  const show = i.type === 'password';
+  i.type = show ? 'text' : 'password';
+  b.textContent = show ? 'HIDE' : 'SHOW';
+  b.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  i.focus();
+}
+document.getElementById('pw').addEventListener('keyup', e=>{
+  const w=document.getElementById('capsWarn');
+  if(e.getModifierState) w.style.display = e.getModifierState('CapsLock') ? '' : 'none';
+});
+document.querySelector('.lcard form').addEventListener('submit', ()=>{
+  const b=document.getElementById('loginBtn');
+  b.disabled = true; b.style.opacity = .7; b.textContent = 'Logging in…';
+});
+</script>
 {% endblock %}

@@ -145,6 +145,14 @@ class Invoice(models.Model):
         return (now.year, now.month) > (sub.year, sub.month)
 
     @property
+    def is_modifiable(self):
+        """Template helper: cancel/edit actions dikhane chahiyein?"""
+        return (self.status in ("valid", "edited", "partially_edited",
+                                "partially_cancelled",
+                                "partially_edited_cancelled")
+                and not self.is_locked)
+
+    @property
     def has_edited_items(self):
         return self.items.filter(item_status="edited").exists()
 

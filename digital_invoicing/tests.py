@@ -1759,3 +1759,168 @@ class SandboxScenarioRunnerTests(TestCase):
         call_command("run_sandbox_scenarios", user="m7user",
                      only="SN001,SN021", stdout=out)
         self.assertIn("2/2 passed", out.getvalue())
+
+
+class SprintGapClosureTests(TestCase):
+    """Sprint 3 UI + Sprint 4 resilience gaps."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from django.utils import timezone
+        self.user = User.objects.create_user("sgc", password="x")
+        self.profile = SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K")
+        self.inv = Invoice.objects.create(
+            owner=self.user, seller_profile=self.profile,
+            invoice_type="Sale Invoice", invoice_date="2026-07-01",
+            buyer_business_name="B", buyer_registration_type="Registered",
+            status="valid", submitted_at=timezone.now())
+        InvoiceItem.objects.create(
+            invoice=self.inv, hs_code="0101.2100", product_description="t",
+            sale_type="Goods at standard rate (default)", quantity=1,
+            value_excl_st=1000, sales_tax=180, rate="18%")
+
+    def test_list_page_shows_items_button_for_modifiable(self):
+        self.client.login(username="sgc", password="x")
+        r = self.client.get("/digital-invoicing/invoices/")
+        self.assertContains(r, "toggleItems")
+        self.assertContains(r, f"items-{self.inv.pk}")
+
+    def test_is_modifiable_property(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        self.assertTrue(self.inv.is_modifiable)
+        self.inv.submitted_at = timezone.now() - timedelta(hours=73)
+        self.assertFalse(self.inv.is_modifiable)
+
+    def test_sync_survives_fbr_outage(self):
+        from .reference_data import ReferenceSyncService
+
+        class DeadClient:
+            def trans_types(self):
+                raise ConnectionError("gateway down")
+
+        r = ReferenceSyncService(client=DeadClient()).sync_trans_type_ids()
+        self.assertIn("error", r)
+        self.assertEqual(r["matched"], [])
+
+    def test_rate_check_skips_failing_type(self):
+        from .reference_data import ReferenceSyncService, MockReferenceClient
+        from .models import TaxSaleType
+
+        class FlakyClient(MockReferenceClient):
+            def sale_type_to_rate(self, **kw):
+                if kw.get("trans_type_id") == 75:
+                    raise TimeoutError("slow")
+                return super().sale_type_to_rate(**kw)
+
+        svc = ReferenceSyncService(client=FlakyClient())
+        svc.sync_trans_type_ids()
+        report = svc.check_rate_drift()
+        std = next(d for d in report
+                   if d["sale_type"] == "Goods at standard rate (default)")
+        self.assertIn("error", std)
+        # Doosre types phir bhi check hue
+        self.assertTrue(any(not d.get("error") for d in report))
+
+
+class DashboardV2Tests(TestCase):
+    """UI sprint — dashboard control-room widgets."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from django.utils import timezone
+        from datetime import date
+        self.user = User.objects.create_user("dash2", password="x")
+        self.profile = SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K", use_sandbox=True)
+        inv = Invoice.objects.create(
+            owner=self.user, seller_profile=self.profile,
+            invoice_type="Sale Invoice", invoice_date=date.today(),
+            buyer_business_name="B", buyer_registration_type="Registered",
+            total_value=5000, invoice_total=5900, status="valid",
+            scenario_id="SN001", submitted_at=timezone.now())
+        InvoiceItem.objects.create(
+            invoice=inv, hs_code="0101.2100", product_description="Widget",
+            sale_type="Goods at standard rate (default)", quantity=1,
+            value_excl_st=5000, sales_tax=900, rate="18%")
+        Invoice.objects.create(
+            owner=self.user, seller_profile=self.profile,
+            invoice_type="Sale Invoice", invoice_date=date.today(),
+            buyer_business_name="B", buyer_registration_type="Registered",
+            status="pending_retry")
+        self.client.login(username="dash2", password="x")
+
+    def test_dashboard_renders_v2_widgets(self):
+        r = self.client.get("/digital-invoicing/dashboard/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Today's sales")
+        self.assertContains(r, "Pending retry")            # actionable chip
+        self.assertContains(r, "?status=pending_retry")    # filtered link
+        self.assertContains(r, "Sandbox mode")
+        self.assertContains(r, "Top HS codes")
+        self.assertContains(r, "0101.2100")
+        self.assertContains(r, "SN001")
+
+    def test_chips_hidden_when_zero(self):
+        Invoice.objects.filter(status="pending_retry").delete()
+        r = self.client.get("/digital-invoicing/dashboard/")
+        self.assertNotContains(r, "?status=pending_retry")
+
+
+class LoginUITests(TestCase):
+    """UI sprint — login screen polish."""
+
+    def test_login_page_has_ux_features(self):
+        r = self.client.get("/digital-invoicing/login/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "pwToggle")          # show/hide
+        self.assertContains(r, "capsWarn")          # caps lock warning
+        self.assertContains(r, "Logging in")        # loading state JS
+        self.assertContains(r, "Tokens encrypted")  # trust footer
+        self.assertContains(r, 'autocomplete="current-password"')
+
+    def test_login_still_works(self):
+        from django.contrib.auth.models import User
+        User.objects.create_user("uilogin", password="x")
+        r = self.client.post("/digital-invoicing/login/",
+                             {"username": "uilogin", "password": "x"})
+        self.assertEqual(r.status_code, 302)
+
+
+class BuyersUITests(TestCase):
+    """UI sprint — buyers screen."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user("buyui", password="x")
+        SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K")
+        Buyer.objects.create(owner=self.user, business_name="Alpha Traders",
+                             ntn_cnic="7654321",
+                             registration_type="Registered", province="Sindh")
+        Buyer.objects.create(owner=self.user, business_name="Beta Store",
+                             registration_type="Unregistered",
+                             province="Sindh")
+        self.client.login(username="buyui", password="x")
+
+    def test_buyers_page_v2(self):
+        r = self.client.get("/digital-invoicing/buyers/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "2 buyers")            # stats chips
+        self.assertContains(r, "1 registered")
+        self.assertContains(r, "exportCSV")            # export
+        self.assertContains(r, "sortT(0")              # sortable
+        self.assertContains(r, "ntnCheck")             # live NTN validation
+        self.assertContains(r, "Invoice history")      # history link
+
+    def test_stats_respect_owner_isolation(self):
+        from django.contrib.auth.models import User
+        other = User.objects.create_user("buyui2", password="x")
+        Buyer.objects.create(owner=other, business_name="Ghost",
+                             registration_type="Registered", province="Sindh")
+        r = self.client.get("/digital-invoicing/buyers/")
+        self.assertContains(r, "2 buyers")             # doosre user ka nahi gina

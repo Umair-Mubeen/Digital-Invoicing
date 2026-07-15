@@ -80,12 +80,15 @@
           {% if inv.status == 'failed' %}
             <button type="button" onclick="rowAction(this,'{% url 'digital_invoicing:resubmit' inv.pk %}','Resubmit to FBR?')"
               style="margin-left:8px;border:1px solid var(--green-d);color:var(--green-d);background:#fff;border-radius:6px;padding:2px 8px;cursor:pointer;font-weight:600">↻ Resubmit</button>
-          {% elif inv.status == 'valid' and not inv.is_locked %}
-            <button type="button" onclick="rowAction(this,'{% url 'digital_invoicing:cancel' inv.pk %}','Cancelled on IRIS? This will mark it Cancelled in the system too.')"
+          {% elif inv.is_modifiable %}
+            <button type="button" onclick="toggleItems(this,{{ inv.pk }})"
+              style="margin-left:8px;border:1px solid var(--green-d);color:var(--green-d);background:#fff;border-radius:6px;padding:2px 8px;cursor:pointer;font-weight:600">☰ Items</button>
+            <button type="button" onclick="rowAction(this,'{% url 'digital_invoicing:cancel' inv.pk %}','Cancelled on IRIS? This will mark the whole invoice Cancelled here too.')"
               style="margin-left:8px;border:1px solid #c0392b;color:#c0392b;background:#fff;border-radius:6px;padding:2px 8px;cursor:pointer;font-weight:600">✕ Cancel</button>
           {% endif %}
         </td>
       </tr>
+      <tr class="items-row" id="items-{{ inv.pk }}" style="display:none"><td colspan="7" style="background:var(--bg,#fafaf7);padding:10px 16px"></td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -123,6 +126,45 @@ async function rowAction(btn,url,msg){
     if(d.ok){ location.reload(); }
     else{ alert(d.error||(d.validationResponse&&d.validationResponse.error)||'Failed'); btn.disabled=false; btn.textContent='Retry'; }
   }catch(e){ alert('Network error'); btn.disabled=false; }
+}
+
+async function toggleItems(btn, pk){
+  const row = document.getElementById('items-'+pk);
+  if(row.style.display !== 'none'){ row.style.display='none'; return; }
+  row.style.display=''; const cell = row.firstElementChild;
+  cell.textContent = 'Loading…';
+  const r = await fetch(pk+'/eligibility/');
+  if(!r.ok){ cell.textContent = 'Error loading items'; return; }
+  const e = await r.json();
+  let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+    Modification limit (10% of last month): Rs ${e.limit} · used Rs ${e.used} · remaining Rs ${e.remaining}
+    ${e.windowOpen?'':' · <b style="color:#c0392b">window closed (72h/month-end)</b>'}</div>`;
+  for(const it of e.items){
+    html += `<div style="display:flex;gap:10px;align-items:center;padding:4px 0;border-top:1px solid var(--line,#eee)">
+      <span style="min-width:60px;font-weight:600">#${it.id}</span>
+      <span style="min-width:90px">${it.status}</span>`;
+    if(e.windowOpen && it.editable){
+      html += `<button onclick="editItem(${pk},${it.id})" style="border:1px solid var(--green-d);color:var(--green-d);background:#fff;border-radius:6px;padding:1px 8px;cursor:pointer">Edit value</button>
+        <button onclick="cancelItem(${pk},${it.id})" style="border:1px solid #c0392b;color:#c0392b;background:#fff;border-radius:6px;padding:1px 8px;cursor:pointer">Cancel item</button>`;
+    }
+    html += `</div>`;
+  }
+  cell.innerHTML = html;
+}
+async function cancelItem(pk, itemId){
+  if(!confirm('Item IRIS par cancel ho chuka? System mein bhi cancelled mark hoga.')) return;
+  const r = await fetch(pk+'/items/'+itemId+'/cancel/',{method:'POST',headers:{'X-CSRFToken':getCookie('csrftoken')}});
+  const d = await r.json();
+  if(d.ok){ location.reload(); } else { alert(d.error || 'Failed'); }
+}
+async function editItem(pk, itemId){
+  const v = prompt('Naya value (excl. ST) — tax khud recompute hoga. Har item sirf EK baar edit ho sakta hai:');
+  if(v === null || v === '' || isNaN(+v)) return;
+  const r = await fetch(pk+'/items/'+itemId+'/edit/',{method:'POST',
+    headers:{'X-CSRFToken':getCookie('csrftoken'),'Content-Type':'application/json'},
+    body: JSON.stringify({value_excl_st: +v})});
+  const d = await r.json();
+  if(d.ok){ location.reload(); } else { alert(d.error || 'Failed'); }
 }
 </script>
 {% endblock %}

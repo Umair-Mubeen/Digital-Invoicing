@@ -1,9 +1,174 @@
 {% extends "digital_invoicing/base_di.html" %}
-{% block na_buyers %}on{% endblock %}
-{% block di_title_text %}Buyers{% endblock %}
-{% block di_title %}Buyers{% endblock %}
-{% block di_subtitle %}Buyer directory + Sales Tax ATL status ({{ period }}){% endblock %}
-{% block di_actions %}<a class="btn-g" href="{% url 'digital_invoicing:atl_upload' %}">⬆ Upload ATL</a>{% endblock %}
+{% block na_buyers %}on<script>
+function sortT(col, th){
+  const tb = th.closest('table').tBodies[0];
+  const dir = th.dataset.dir = (th.dataset.dir === 'a' ? 'd' : 'a');
+  [...tb.rows].sort((a,b)=>{
+    const x=a.cells[col].innerText.trim().toLowerCase(), y=b.cells[col].innerText.trim().toLowerCase();
+    return dir==='a' ? x.localeCompare(y) : y.localeCompare(x);
+  }).forEach(r=>tb.appendChild(r));
+}
+function exportCSV(){
+  const rows=[["Business Name","NTN/CNIC","STRN","Type","Province","ATL"]];
+  document.querySelectorAll('table.list tbody tr').forEach(tr=>{
+    const c=tr.cells;
+    const name=c[0].querySelector('td>span')?'':c[0].childNodes[0].textContent.trim();
+    const prov=(c[0].querySelector('span')||{}).textContent||'';
+    const ntn=(c[1].querySelector('.fbrno')||{}).textContent||'';
+    const strn=((c[1].innerText.match(/STRN\s+(\S+)/)||[])[1])||'';
+    rows.push([c[0].childNodes[0].textContent.trim(), ntn.replace('—',''), strn,
+               c[2].innerText.trim(), prov.trim(), c[3].innerText.replace('●','').trim()]);
+  });
+  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:'text/csv'}));
+  a.download='buyers.csv'; a.click();
+}
+function ntnCheck(i){
+  const v=i.value.replace(/[^0-9]/g,''), h=document.getElementById('ntnHint');
+  if(!v){ h.textContent='7 digits (NTN) ya 13 digits (CNIC)'; h.style.color='var(--faint)'; return; }
+  if(v.length===7){ h.textContent='✓ Valid NTN format'; h.style.color='var(--green-d)'; }
+  else if(v.length===13){ h.textContent='✓ Valid CNIC format'; h.style.color='var(--green-d)'; }
+  else { h.textContent='⚠ '+v.length+' digits — NTN 7 ya CNIC 13 hone chahiyein (FBR error 0002 se bachne ke liye)'; h.style.color='#b8860b'; }
+}
+</script>
+{% endblock %}
+{% block di_title_text %}Buyers<script>
+function sortT(col, th){
+  const tb = th.closest('table').tBodies[0];
+  const dir = th.dataset.dir = (th.dataset.dir === 'a' ? 'd' : 'a');
+  [...tb.rows].sort((a,b)=>{
+    const x=a.cells[col].innerText.trim().toLowerCase(), y=b.cells[col].innerText.trim().toLowerCase();
+    return dir==='a' ? x.localeCompare(y) : y.localeCompare(x);
+  }).forEach(r=>tb.appendChild(r));
+}
+function exportCSV(){
+  const rows=[["Business Name","NTN/CNIC","STRN","Type","Province","ATL"]];
+  document.querySelectorAll('table.list tbody tr').forEach(tr=>{
+    const c=tr.cells;
+    const name=c[0].querySelector('td>span')?'':c[0].childNodes[0].textContent.trim();
+    const prov=(c[0].querySelector('span')||{}).textContent||'';
+    const ntn=(c[1].querySelector('.fbrno')||{}).textContent||'';
+    const strn=((c[1].innerText.match(/STRN\s+(\S+)/)||[])[1])||'';
+    rows.push([c[0].childNodes[0].textContent.trim(), ntn.replace('—',''), strn,
+               c[2].innerText.trim(), prov.trim(), c[3].innerText.replace('●','').trim()]);
+  });
+  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:'text/csv'}));
+  a.download='buyers.csv'; a.click();
+}
+function ntnCheck(i){
+  const v=i.value.replace(/[^0-9]/g,''), h=document.getElementById('ntnHint');
+  if(!v){ h.textContent='7 digits (NTN) ya 13 digits (CNIC)'; h.style.color='var(--faint)'; return; }
+  if(v.length===7){ h.textContent='✓ Valid NTN format'; h.style.color='var(--green-d)'; }
+  else if(v.length===13){ h.textContent='✓ Valid CNIC format'; h.style.color='var(--green-d)'; }
+  else { h.textContent='⚠ '+v.length+' digits — NTN 7 ya CNIC 13 hone chahiyein (FBR error 0002 se bachne ke liye)'; h.style.color='#b8860b'; }
+}
+</script>
+{% endblock %}
+{% block di_title %}Buyers<script>
+function sortT(col, th){
+  const tb = th.closest('table').tBodies[0];
+  const dir = th.dataset.dir = (th.dataset.dir === 'a' ? 'd' : 'a');
+  [...tb.rows].sort((a,b)=>{
+    const x=a.cells[col].innerText.trim().toLowerCase(), y=b.cells[col].innerText.trim().toLowerCase();
+    return dir==='a' ? x.localeCompare(y) : y.localeCompare(x);
+  }).forEach(r=>tb.appendChild(r));
+}
+function exportCSV(){
+  const rows=[["Business Name","NTN/CNIC","STRN","Type","Province","ATL"]];
+  document.querySelectorAll('table.list tbody tr').forEach(tr=>{
+    const c=tr.cells;
+    const name=c[0].querySelector('td>span')?'':c[0].childNodes[0].textContent.trim();
+    const prov=(c[0].querySelector('span')||{}).textContent||'';
+    const ntn=(c[1].querySelector('.fbrno')||{}).textContent||'';
+    const strn=((c[1].innerText.match(/STRN\s+(\S+)/)||[])[1])||'';
+    rows.push([c[0].childNodes[0].textContent.trim(), ntn.replace('—',''), strn,
+               c[2].innerText.trim(), prov.trim(), c[3].innerText.replace('●','').trim()]);
+  });
+  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:'text/csv'}));
+  a.download='buyers.csv'; a.click();
+}
+function ntnCheck(i){
+  const v=i.value.replace(/[^0-9]/g,''), h=document.getElementById('ntnHint');
+  if(!v){ h.textContent='7 digits (NTN) ya 13 digits (CNIC)'; h.style.color='var(--faint)'; return; }
+  if(v.length===7){ h.textContent='✓ Valid NTN format'; h.style.color='var(--green-d)'; }
+  else if(v.length===13){ h.textContent='✓ Valid CNIC format'; h.style.color='var(--green-d)'; }
+  else { h.textContent='⚠ '+v.length+' digits — NTN 7 ya CNIC 13 hone chahiyein (FBR error 0002 se bachne ke liye)'; h.style.color='#b8860b'; }
+}
+</script>
+{% endblock %}
+{% block di_subtitle %}Buyer directory + Sales Tax ATL status ({{ period }})<script>
+function sortT(col, th){
+  const tb = th.closest('table').tBodies[0];
+  const dir = th.dataset.dir = (th.dataset.dir === 'a' ? 'd' : 'a');
+  [...tb.rows].sort((a,b)=>{
+    const x=a.cells[col].innerText.trim().toLowerCase(), y=b.cells[col].innerText.trim().toLowerCase();
+    return dir==='a' ? x.localeCompare(y) : y.localeCompare(x);
+  }).forEach(r=>tb.appendChild(r));
+}
+function exportCSV(){
+  const rows=[["Business Name","NTN/CNIC","STRN","Type","Province","ATL"]];
+  document.querySelectorAll('table.list tbody tr').forEach(tr=>{
+    const c=tr.cells;
+    const name=c[0].querySelector('td>span')?'':c[0].childNodes[0].textContent.trim();
+    const prov=(c[0].querySelector('span')||{}).textContent||'';
+    const ntn=(c[1].querySelector('.fbrno')||{}).textContent||'';
+    const strn=((c[1].innerText.match(/STRN\s+(\S+)/)||[])[1])||'';
+    rows.push([c[0].childNodes[0].textContent.trim(), ntn.replace('—',''), strn,
+               c[2].innerText.trim(), prov.trim(), c[3].innerText.replace('●','').trim()]);
+  });
+  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:'text/csv'}));
+  a.download='buyers.csv'; a.click();
+}
+function ntnCheck(i){
+  const v=i.value.replace(/[^0-9]/g,''), h=document.getElementById('ntnHint');
+  if(!v){ h.textContent='7 digits (NTN) ya 13 digits (CNIC)'; h.style.color='var(--faint)'; return; }
+  if(v.length===7){ h.textContent='✓ Valid NTN format'; h.style.color='var(--green-d)'; }
+  else if(v.length===13){ h.textContent='✓ Valid CNIC format'; h.style.color='var(--green-d)'; }
+  else { h.textContent='⚠ '+v.length+' digits — NTN 7 ya CNIC 13 hone chahiyein (FBR error 0002 se bachne ke liye)'; h.style.color='#b8860b'; }
+}
+</script>
+{% endblock %}
+{% block di_actions %}<a class="btn-g" href="{% url 'digital_invoicing:atl_upload' %}">⬆ Upload ATL</a><script>
+function sortT(col, th){
+  const tb = th.closest('table').tBodies[0];
+  const dir = th.dataset.dir = (th.dataset.dir === 'a' ? 'd' : 'a');
+  [...tb.rows].sort((a,b)=>{
+    const x=a.cells[col].innerText.trim().toLowerCase(), y=b.cells[col].innerText.trim().toLowerCase();
+    return dir==='a' ? x.localeCompare(y) : y.localeCompare(x);
+  }).forEach(r=>tb.appendChild(r));
+}
+function exportCSV(){
+  const rows=[["Business Name","NTN/CNIC","STRN","Type","Province","ATL"]];
+  document.querySelectorAll('table.list tbody tr').forEach(tr=>{
+    const c=tr.cells;
+    const name=c[0].querySelector('td>span')?'':c[0].childNodes[0].textContent.trim();
+    const prov=(c[0].querySelector('span')||{}).textContent||'';
+    const ntn=(c[1].querySelector('.fbrno')||{}).textContent||'';
+    const strn=((c[1].innerText.match(/STRN\s+(\S+)/)||[])[1])||'';
+    rows.push([c[0].childNodes[0].textContent.trim(), ntn.replace('—',''), strn,
+               c[2].innerText.trim(), prov.trim(), c[3].innerText.replace('●','').trim()]);
+  });
+  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:'text/csv'}));
+  a.download='buyers.csv'; a.click();
+}
+function ntnCheck(i){
+  const v=i.value.replace(/[^0-9]/g,''), h=document.getElementById('ntnHint');
+  if(!v){ h.textContent='7 digits (NTN) ya 13 digits (CNIC)'; h.style.color='var(--faint)'; return; }
+  if(v.length===7){ h.textContent='✓ Valid NTN format'; h.style.color='var(--green-d)'; }
+  else if(v.length===13){ h.textContent='✓ Valid CNIC format'; h.style.color='var(--green-d)'; }
+  else { h.textContent='⚠ '+v.length+' digits — NTN 7 ya CNIC 13 hone chahiyein (FBR error 0002 se bachne ke liye)'; h.style.color='#b8860b'; }
+}
+</script>
+{% endblock %}
 
 {% block di_head %}
 <style>
@@ -20,10 +185,49 @@
   .atl.n{background:#EEF2F7;color:var(--faint)}
   @media(max-width:900px){.bwrap{grid-template-columns:1fr}}
 </style>
+<script>
+function sortT(col, th){
+  const tb = th.closest('table').tBodies[0];
+  const dir = th.dataset.dir = (th.dataset.dir === 'a' ? 'd' : 'a');
+  [...tb.rows].sort((a,b)=>{
+    const x=a.cells[col].innerText.trim().toLowerCase(), y=b.cells[col].innerText.trim().toLowerCase();
+    return dir==='a' ? x.localeCompare(y) : y.localeCompare(x);
+  }).forEach(r=>tb.appendChild(r));
+}
+function exportCSV(){
+  const rows=[["Business Name","NTN/CNIC","STRN","Type","Province","ATL"]];
+  document.querySelectorAll('table.list tbody tr').forEach(tr=>{
+    const c=tr.cells;
+    const name=c[0].querySelector('td>span')?'':c[0].childNodes[0].textContent.trim();
+    const prov=(c[0].querySelector('span')||{}).textContent||'';
+    const ntn=(c[1].querySelector('.fbrno')||{}).textContent||'';
+    const strn=((c[1].innerText.match(/STRN\s+(\S+)/)||[])[1])||'';
+    rows.push([c[0].childNodes[0].textContent.trim(), ntn.replace('—',''), strn,
+               c[2].innerText.trim(), prov.trim(), c[3].innerText.replace('●','').trim()]);
+  });
+  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:'text/csv'}));
+  a.download='buyers.csv'; a.click();
+}
+function ntnCheck(i){
+  const v=i.value.replace(/[^0-9]/g,''), h=document.getElementById('ntnHint');
+  if(!v){ h.textContent='7 digits (NTN) ya 13 digits (CNIC)'; h.style.color='var(--faint)'; return; }
+  if(v.length===7){ h.textContent='✓ Valid NTN format'; h.style.color='var(--green-d)'; }
+  else if(v.length===13){ h.textContent='✓ Valid CNIC format'; h.style.color='var(--green-d)'; }
+  else { h.textContent='⚠ '+v.length+' digits — NTN 7 ya CNIC 13 hone chahiyein (FBR error 0002 se bachne ke liye)'; h.style.color='#b8860b'; }
+}
+</script>
 {% endblock %}
 
 {% block di_content %}
 {% if saved %}<div class="savedmsg">✓ Buyer saved</div>{% endif %}
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+  <span style="background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;box-shadow:var(--shadow)">{{ stats.total }} buyers</span>
+  <span style="background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;box-shadow:var(--shadow)"><span style="color:var(--green-d)">●</span> {{ stats.registered }} registered</span>
+  <span style="background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;box-shadow:var(--shadow)"><span style="color:var(--faint)">●</span> {{ stats.unregistered }} unregistered</span>
+  <span style="background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;box-shadow:var(--shadow)"><span style="color:var(--green-d)">✓</span> {{ stats.atl_active }} ATL active</span>
+</div>
 <form class="filterbar" method="get">
   <input class="fin grow" name="q" value="{{ q }}" placeholder="🔍 Buyer name or NTN/CNIC…">
   <select name="reg" class="fsel">
@@ -32,6 +236,7 @@
     <option {% if reg == 'Unregistered' %}selected{% endif %}>Unregistered</option>
   </select>
   <button class="fbtn" type="submit">Filter</button>
+  <button class="fbtn" type="button" onclick="exportCSV()" style="background:#fff;color:var(--navy);border:1px solid var(--line)">⬇ CSV</button>
   {% if q or reg %}<a class="fclear" href="{% url 'digital_invoicing:buyers' %}">✕ Clear</a>{% endif %}
 </form>
 
@@ -41,7 +246,12 @@
     <h3>Saved buyers ({{ buyer_list|length }})</h3>
     {% if buyer_list %}
     <table class="list">
-      <thead><tr><th>Buyer</th><th>NTN / STRN</th><th>Type</th><th>ATL ({{ period }})</th><th></th></tr></thead>
+      <thead><tr>
+        <th style="cursor:pointer" onclick="sortT(0,this)" title="Sort">Buyer ⇅</th>
+        <th>NTN / STRN</th>
+        <th style="cursor:pointer" onclick="sortT(2,this)" title="Sort">Type ⇅</th>
+        <th style="cursor:pointer" onclick="sortT(3,this)" title="Sort">ATL ({{ period }}) ⇅</th>
+        <th></th></tr></thead>
       <tbody>
       {% for x in buyer_list %}
         <tr>
@@ -54,7 +264,8 @@
             {% else %}<span class="atl n">— no data</span>{% endif %}
           </td>
           <td style="white-space:nowrap">
-            <a href="?edit={{ x.b.pk }}" style="color:var(--green-d);font-weight:600;text-decoration:none">✎</a>
+            <a href="{% url 'digital_invoicing:list' %}?q={{ x.b.business_name|urlencode }}" title="Invoice history" style="color:var(--navy);font-weight:600;text-decoration:none;font-size:12px">⏱</a>
+            <a href="?edit={{ x.b.pk }}" title="Edit" style="color:var(--green-d);font-weight:600;text-decoration:none;margin-left:8px">✎</a>
             <form method="post" style="display:inline" onsubmit="return confirm('Delete this buyer?')">
               {% csrf_token %}<input type="hidden" name="delete_id" value="{{ x.b.pk }}">
               <button type="submit" style="background:none;border:none;color:var(--danger);cursor:pointer;font:inherit;font-weight:600;margin-left:8px">🗑</button>
@@ -78,7 +289,8 @@
         <div class="field"><label>Business Name *</label>
           <input name="business_name" required value="{{ editing.business_name|default:'' }}"></div>
         <div class="field"><label>NTN / CNIC</label>
-          <input name="ntn_cnic" value="{{ editing.ntn_cnic|default:'' }}"></div>
+          <input name="ntn_cnic" id="bNtn" value="{{ editing.ntn_cnic|default:'' }}" inputmode="numeric" oninput="ntnCheck(this)">
+          <div id="ntnHint" style="font-size:11.5px;margin-top:3px;color:var(--faint)">7 digits (NTN) ya 13 digits (CNIC)</div></div>
         <div class="field"><label>STRN (Sales Tax Reg No)</label>
           <input name="strn" value="{{ editing.strn|default:'' }}"></div>
         <div class="field"><label>Registration Type</label>
@@ -98,4 +310,37 @@
   </div>
 
 </div>
+<script>
+function sortT(col, th){
+  const tb = th.closest('table').tBodies[0];
+  const dir = th.dataset.dir = (th.dataset.dir === 'a' ? 'd' : 'a');
+  [...tb.rows].sort((a,b)=>{
+    const x=a.cells[col].innerText.trim().toLowerCase(), y=b.cells[col].innerText.trim().toLowerCase();
+    return dir==='a' ? x.localeCompare(y) : y.localeCompare(x);
+  }).forEach(r=>tb.appendChild(r));
+}
+function exportCSV(){
+  const rows=[["Business Name","NTN/CNIC","STRN","Type","Province","ATL"]];
+  document.querySelectorAll('table.list tbody tr').forEach(tr=>{
+    const c=tr.cells;
+    const name=c[0].querySelector('td>span')?'':c[0].childNodes[0].textContent.trim();
+    const prov=(c[0].querySelector('span')||{}).textContent||'';
+    const ntn=(c[1].querySelector('.fbrno')||{}).textContent||'';
+    const strn=((c[1].innerText.match(/STRN\s+(\S+)/)||[])[1])||'';
+    rows.push([c[0].childNodes[0].textContent.trim(), ntn.replace('—',''), strn,
+               c[2].innerText.trim(), prov.trim(), c[3].innerText.replace('●','').trim()]);
+  });
+  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:'text/csv'}));
+  a.download='buyers.csv'; a.click();
+}
+function ntnCheck(i){
+  const v=i.value.replace(/[^0-9]/g,''), h=document.getElementById('ntnHint');
+  if(!v){ h.textContent='7 digits (NTN) ya 13 digits (CNIC)'; h.style.color='var(--faint)'; return; }
+  if(v.length===7){ h.textContent='✓ Valid NTN format'; h.style.color='var(--green-d)'; }
+  else if(v.length===13){ h.textContent='✓ Valid CNIC format'; h.style.color='var(--green-d)'; }
+  else { h.textContent='⚠ '+v.length+' digits — NTN 7 ya CNIC 13 hone chahiyein (FBR error 0002 se bachne ke liye)'; h.style.color='#b8860b'; }
+}
+</script>
 {% endblock %}

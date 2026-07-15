@@ -274,7 +274,46 @@ def dashboard(request):
     buyer_labels = [ (r["buyer_business_name"] or "—")[:22] for r in top_buyers]
     buyer_values = [float(r["v"] or 0) for r in top_buyers]
 
+    # ---- Dashboard v2 (UI sprint) — sab chhote aggregates ----
+    from .models import InvoiceItem as _II, AuditLog as _AL, SellerProfile as _SP
+    t = qs.filter(invoice_date=today).aggregate(
+        n=Count("id"), v=Sum("total_value"))
+    today_stats = {"count": t["n"] or 0, "value": float(t["v"] or 0)}
+
+    status_map = {r["status"]: r["n"] for r in status_rows}
+    action_chips = [
+        ("pending_retry", "Pending retry", status_map.get("pending_retry", 0)),
+        ("failed", "Failed", status_map.get("failed", 0)),
+        ("draft", "Draft", status_map.get("draft", 0)),
+        ("cancelled", "Cancelled", status_map.get("cancelled", 0)),
+    ]
+
+    item_qs = _II.objects.filter(invoice__in=qs)
+    top_products = list(item_qs.values("product_description")
+                        .annotate(v=Sum("value_excl_st"))
+                        .order_by("-v")[:5])
+    top_hs = list(item_qs.values("hs_code")
+                  .annotate(v=Sum("value_excl_st"), n=Count("id"))
+                  .order_by("-v")[:5])
+    scenario_stats = list(qs.exclude(scenario_id="")
+                          .values("scenario_id").annotate(n=Count("id"))
+                          .order_by("-n")[:6])
+    recent_activity = list(_AL.objects.filter(user=request.user)
+                           .order_by("-created_at")[:6])
+
+    last_valid = qs.order_by("-submitted_at").first()
+    profile = _SP.objects.filter(user=request.user).first()
+    fbr_status = {
+        "sandbox": (profile.use_sandbox if profile else True),
+        "last_valid_at": last_valid.submitted_at if last_valid else None,
+        "retry_depth": status_map.get("pending_retry", 0),
+    }
+
     return render(request, "digital_invoicing/dashboard.html", {
+        "today_stats": today_stats, "action_chips": action_chips,
+        "top_products": top_products, "top_hs": top_hs,
+        "scenario_stats": scenario_stats, "recent_activity": recent_activity,
+        "fbr_status": fbr_status,
         "count": agg["count"] or 0,
         "value": agg["value"] or 0,
         "sales_tax": agg["st"] or 0,
@@ -813,7 +852,8 @@ def buyers(request):
     """Buyers manager — list + add/edit/delete + ATL status column."""
     from .models import Buyer
     from django.db.models import Q as _Q
-    rows = Buyer.objects.filter(owner=request.user)
+    all_rows = Buyer.objects.filter(owner=request.user)
+    rows = all_rows
     bq = request.GET.get("q", "").strip()
     if bq:
         rows = rows.filter(_Q(business_name__icontains=bq) |
@@ -856,8 +896,15 @@ def buyers(request):
                            "atl_period": rec.period if rec else None})
 
     from .models import SellerProfile
+    atl_active = sum(1 for x in buyer_list if x.get("atl") == "Active")
+    stats = {
+        "total": all_rows.count(),
+        "registered": all_rows.filter(registration_type="Registered").count(),
+        "unregistered": all_rows.filter(registration_type="Unregistered").count(),
+        "atl_active": atl_active,
+    }
     return render(request, "digital_invoicing/buyers.html", {
-        "q": bq, "reg": breg,
+        "q": bq, "reg": breg, "stats": stats,
         "buyer_list": buyer_list, "editing": editing, "saved": saved,
         "provinces": [p[0] for p in SellerProfile.PROVINCES],
         "reg_types": ["Registered", "Unregistered"],

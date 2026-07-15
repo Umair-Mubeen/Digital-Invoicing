@@ -25,6 +25,11 @@ class Command(BaseCommand):
         svc = ReferenceSyncService()
 
         ids = svc.sync_trans_type_ids()
+        if ids.get("error"):
+            self.stdout.write(self.style.WARNING(
+                f"FBR unreachable — {ids['error']}; aglay cron run par "
+                "dobara try hoga"))
+            return
         self.stdout.write(f"Trans type IDs: {len(ids['matched'])} matched, "
                           f"{len(ids['unmatched'])} unmatched "
                           f"(FBR total {ids['fbr_types']})")
@@ -35,6 +40,10 @@ class Command(BaseCommand):
         drifts = [d for d in report if d["drift"]]
         self.stdout.write(f"Rate check: {len(report)} types checked, "
                           f"{len(drifts)} drift(s)")
+        errs = [d for d in report if d.get("error")]
+        for d in errs:
+            self.stdout.write(self.style.WARNING(
+                f"  SKIP {d['sale_type']}: {d['error']}"))
         for d in drifts:
             tag = "AUTO" if d["auto_applicable"] else "MANUAL (multi-rate)"
             self.stdout.write(f"  DRIFT [{tag}] {d['sale_type']}: ours "
