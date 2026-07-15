@@ -180,10 +180,17 @@ def validate_invoice(p: dict) -> list:
         if qty is not None and not _decimals_ok(it.get("quantity"), 4):
             errors.append(_err("0302", pfx + "Decimal places exceed allowed limits"))
 
-        # SRO/schedule mandatory where rate is not 18% (0077); item Sr No
-        # mandatory where SRO provided (0078)
+        # SRO/schedule mandatory (0077): PRAL samples ke mutabiq sirf
+        # SCHEDULE-BASED types par (jinki config mein sro defined hai —
+        # reduced/exempt/EV/etc). Sector rates (telecom 17%, processing 5%,
+        # FED 8%) ke doc samples SRO ke baghair valid hain.
         rate_num = _num(str(rate).replace("%", "")) if rate else None
-        if rate_num is not None and rate_num != 18 and not it.get("sroScheduleNo"):
+        cfg_sro = (cfg or {}).get("sro", "")
+        if cfg is not None:
+            sro_required = bool(cfg_sro)
+        else:
+            sro_required = rate_num is not None and rate_num != 18
+        if sro_required and not it.get("sroScheduleNo"):
             errors.append(_err("0077", pfx + "Valid SRO/Schedule No. is mandatory where rate is not 18%"))
         if it.get("sroScheduleNo") and not (it.get("sroItemSerialNo") or "").strip():
             errors.append(_err("0078", pfx + "Valid Item Sr. No. is mandatory where SRO/Schedule No. is provided"))

@@ -1693,7 +1693,69 @@ class ValidatorBranchTests(TestCase):
         p["invoiceType"] = "Bogus Type"
         self.assertIn("0003", self._codes(p))     # 0003 = invoice type
 
-    def test_0077_sro_needed_when_rate_not_18(self):
+    def test_0077_sro_needed_for_schedule_based_types(self):
+        # Schedule-based (config sro defined) -> SRO mandatory
+        p = self._p(saleType="Goods at Reduced Rate", rate="1%",
+                    salesTaxApplicable=1, sroScheduleNo="")
+        self.assertIn("0077", self._codes(p))
+        # Sector rate (telecom 17%) — PRAL sample SRO ke baghair valid
         p = self._p(saleType="Telecommunication services", rate="17%",
                     salesTaxApplicable=17, sroScheduleNo="")
-        self.assertIn("0077", self._codes(p))
+        self.assertNotIn("0077", self._codes(p))
+
+
+class SandboxScenarioRunnerTests(TestCase):
+    """Milestone 7 — 28-scenario payload generator + runner."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user("m7user", password="x")
+        self.profile = SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K", use_sandbox=True)
+
+    def test_all_28_payloads_pass_local_validation(self):
+        from .sandbox_scenarios import build_scenario_payload
+        from .validators import validate_invoice
+        from .tax_engine import SCENARIOS
+        for code, _, _ in SCENARIOS:
+            p = build_scenario_payload(code, self.profile)
+            errs = validate_invoice(p)
+            self.assertEqual(errs, [], f"{code}: {errs[:3]}")
+
+    def test_pral_sample_math_in_payloads(self):
+        from .sandbox_scenarios import build_scenario_payload
+        # Doc-verified: SN021 36, SN022 78, SN023 24600, SN008 180 (MRP)
+        for code, expected in [("SN021", 36.0), ("SN022", 78.0),
+                               ("SN023", 24600.0), ("SN008", 180.0)]:
+            p = build_scenario_payload(code, self.profile)
+            self.assertEqual(p["items"][0]["salesTaxApplicable"], expected,
+                             code)
+
+    def test_sn009_stwh_equals_st(self):
+        from .sandbox_scenarios import build_scenario_payload
+        p = build_scenario_payload("SN009", self.profile)
+        it = p["items"][0]
+        self.assertEqual(it["salesTaxWithheldAtSource"],
+                         it["salesTaxApplicable"])   # 0050 rule
+
+    def test_unregistered_scenarios_have_no_buyer_ntn(self):
+        from .sandbox_scenarios import build_scenario_payload
+        p = build_scenario_payload("SN002", self.profile)
+        self.assertEqual(p["buyerNTNCNIC"], "")
+        self.assertEqual(p["buyerRegistrationType"], "Unregistered")
+
+    def test_runner_all_pass_on_mock(self):
+        from .sandbox_scenarios import run_scenarios
+        results = run_scenarios(self.profile)
+        self.assertEqual(len(results), 28)
+        failed = [(c, m) for c, ok, m in results if not ok]
+        self.assertEqual(failed, [])
+
+    def test_command_runs(self):
+        from django.core.management import call_command
+        from io import StringIO
+        out = StringIO()
+        call_command("run_sandbox_scenarios", user="m7user",
+                     only="SN001,SN021", stdout=out)
+        self.assertIn("2/2 passed", out.getvalue())
