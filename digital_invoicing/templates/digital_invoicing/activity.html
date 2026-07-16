@@ -1,14 +1,35 @@
 {% extends "digital_invoicing/base_di.html" %}
 {% block na_activity %}on{% endblock %}
-{% block di_title_text %}Activity Log{% endblock %}
-{% block di_title %}Activity Log{% endblock %}
-{% block di_subtitle %}Aapke account ki har harkat ka record{% endblock %}
+{% block di_title_text %}Audit Log{% endblock %}
+{% block di_title %}Audit Log{% endblock %}
+{% block di_subtitle %}Every action on your account — who, what, when, from which IP{% endblock %}
 
 {% block di_content %}
+<form class="filterbar" method="get">
+  <select name="action" class="fsel">
+    <option value="">All actions</option>
+    {% for key, label in actions %}
+    <option value="{{ key }}" {% if action == key %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <input type="date" name="from" value="{{ date_from }}" class="fsel" title="From date">
+  <input type="date" name="to" value="{{ date_to }}" class="fsel" title="To date">
+  <button class="fbtn" type="submit">Filter</button>
+  <a class="fbtn" href="?{{ qstring }}{% if qstring %}&{% endif %}export=csv"
+     style="background:#fff;color:var(--navy);border:1px solid var(--line);text-decoration:none;display:inline-flex;align-items:center">⬇ CSV</a>
+  {% if action or date_from or date_to %}
+    <a class="fclear" href="{% url 'digital_invoicing:activity' %}">✕ Clear</a>
+  {% endif %}
+</form>
+
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px">
+  <span style="background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;box-shadow:var(--shadow)">{{ total }} event{{ total|pluralize }}</span>
+</div>
+
 <div class="di-card">
   {% if logs %}
   <table class="list">
-    <thead><tr><th>Waqt</th><th>Action</th><th>Detail</th><th>IP</th></tr></thead>
+    <thead><tr><th>Time</th><th>Action</th><th>Detail</th><th>IP</th></tr></thead>
     <tbody>
     {% for l in logs %}
       <tr>
@@ -17,21 +38,32 @@
           {% if l.action == "invoice_valid" %}<span class="pill valid">Invoice validated</span>
           {% elif l.action == "invoice_failed" %}<span class="pill failed">Invoice rejected</span>
           {% elif l.action == "login_failed" %}<span class="pill failed">Login failed</span>
+          {% elif l.action == "token_removed" %}<span class="pill failed">FBR token removed</span>
           {% else %}<span class="pill" style="background:#eef2f7;color:var(--navy)">{{ l.get_action_display }}</span>{% endif %}
         </td>
         <td style="font-size:12.5px;color:var(--muted)">
           {% if l.detail.fbr_number %}<span class="fbrno">{{ l.detail.fbr_number }}</span>{% endif %}
-          {% if l.detail.total %} · Rs {{ l.detail.total|floatformat:0 }}{% endif %}
+          {% if l.detail.total %} · Rs {{ l.detail.total|floatformat:"0g" }}{% endif %}
           {% if l.detail.errors %} · errors: {{ l.detail.errors|join:", " }}{% endif %}
           {% if l.detail.business_name %}{{ l.detail.business_name }}{% endif %}
+          {% if l.detail.invoice_id %} · inv #{{ l.detail.invoice_id }}{% endif %}
+          {% if l.detail.item_id %} · item #{{ l.detail.item_id }}{% endif %}
+          {% if l.detail.rows %} · {{ l.detail.rows }} rows{% endif %}
         </td>
         <td style="color:var(--muted);font-size:12px">{{ l.ip }}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
+  {% if page.paginator.num_pages > 1 %}
+  <div class="pager">
+    {% if page.has_previous %}<a href="?{{ qstring }}{% if qstring %}&{% endif %}page={{ page.previous_page_number }}">‹ Prev</a>{% endif %}
+    <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+    {% if page.has_next %}<a href="?{{ qstring }}{% if qstring %}&{% endif %}page={{ page.next_page_number }}">Next ›</a>{% endif %}
+  </div>
+  {% endif %}
   {% else %}
-    <div class="empty">No activity yet.</div>
+    <div class="empty">No activity yet{% if action or date_from or date_to %} for this filter{% endif %}.</div>
   {% endif %}
 </div>
 {% endblock %}

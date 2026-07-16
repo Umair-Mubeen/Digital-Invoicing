@@ -568,6 +568,43 @@ from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
 from django.shortcuts import redirect
 
 
+@login_required
+def help_page(request):
+    """Static help — quick start, shortcuts, common errors."""
+    return render(request, "digital_invoicing/help.html", {})
+
+
+@login_required
+def account(request):
+    """User account — email update, password change, recent security events."""
+    from django.contrib.auth.forms import PasswordChangeForm
+    from django.contrib.auth import update_session_auth_hash
+    pw_form = PasswordChangeForm(request.user)
+    saved = pw_saved = False
+    if request.method == "POST" and request.POST.get("form") == "email":
+        email = request.POST.get("email", "").strip()
+        request.user.email = email
+        request.user.save(update_fields=["email"])
+        log_event(request, "profile_saved", field="email")
+        saved = True
+    elif request.method == "POST" and request.POST.get("form") == "password":
+        pw_form = PasswordChangeForm(request.user, request.POST)
+        if pw_form.is_valid():
+            user = pw_form.save()
+            update_session_auth_hash(request, user)   # logout na ho
+            log_event(request, "password_changed")
+            pw_saved = True
+            pw_form = PasswordChangeForm(request.user)
+    security_events = (AuditLog.objects.filter(
+        user=request.user,
+        action__in=["login", "login_failed", "password_changed",
+                    "token_updated", "token_removed"])[:8])
+    return render(request, "digital_invoicing/account.html", {
+        "pw_form": pw_form, "saved": saved, "pw_saved": pw_saved,
+        "security_events": security_events,
+    })
+
+
 def signup(request):
     if request.user.is_authenticated:
         return redirect("digital_invoicing:create")
@@ -908,9 +945,45 @@ def purchases(request):
 
 @login_required
 def activity(request):
-    """User ki apni activity — audit log (SaaS transparency)."""
-    logs = AuditLog.objects.filter(user=request.user)[:100]
-    return render(request, "digital_invoicing/activity.html", {"logs": logs})
+    """User's own audit log (SaaS transparency) — filters + pagination."""
+    from django.core.paginator import Paginator
+    qs = AuditLog.objects.filter(user=request.user)
+    action = request.GET.get("action", "").strip()
+    valid_actions = {a[0] for a in AuditLog.ACTIONS}
+    if action in valid_actions:
+        qs = qs.filter(action=action)
+    date_from = request.GET.get("from", "").strip()
+    date_to = request.GET.get("to", "").strip()
+    if date_from:
+        qs = qs.filter(created_at__date__gte=date_from)
+    if date_to:
+        qs = qs.filter(created_at__date__lte=date_to)
+
+    if request.GET.get("export") == "csv":
+        import csv as _csv
+        from django.http import HttpResponse
+        resp = HttpResponse(content_type="text/csv; charset=utf-8")
+        resp["Content-Disposition"] = 'attachment; filename="activity.csv"'
+        resp.write("\ufeff")
+        w = _csv.writer(resp)
+        w.writerow(["Time", "Action", "Detail", "IP"])
+        for l in qs[:5000]:
+            w.writerow([l.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                        l.get_action_display(),
+                        "; ".join(f"{k}={v}" for k, v in (l.detail or {}).items()),
+                        l.ip])
+        return resp
+
+    paginator = Paginator(qs, 30)
+    page = paginator.get_page(request.GET.get("page"))
+    qsdict = request.GET.copy()
+    qsdict.pop("page", None)
+    return render(request, "digital_invoicing/activity.html", {
+        "logs": page.object_list, "page": page,
+        "actions": AuditLog.ACTIONS, "action": action,
+        "date_from": date_from, "date_to": date_to,
+        "total": paginator.count, "qstring": qsdict.urlencode(),
+    })
 
 
 # ---------------------------------------------------------------------------

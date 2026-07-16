@@ -77,7 +77,7 @@ new Chart(document.getElementById('chTax'), {
 
 <div class="card" style="margin-bottom:20px">
   <h3 style="margin-top:0">Sale type breakdown — {{ period_nav.label }}</h3>
-  <div class="hint" style="margin-bottom:8px">FBR return (Annex-C) ke liye — cancelled items shamil nahi</div>
+  <div class="hint" style="margin-bottom:8px">For the FBR sales tax return (Annex-C) — cancelled items excluded</div>
   <table style="width:100%;border-collapse:collapse">
     <tr style="text-align:left;color:var(--muted)">
       <th style="padding:8px 6px">Sale Type</th><th>Rate</th><th>Items</th>
@@ -91,7 +91,7 @@ new Chart(document.getElementById('chTax'), {
         <td class="num">Rs {{ r.st|floatformat:"0g" }}</td>
         <td class="num">Rs {{ r.ft|floatformat:"0g" }}</td></tr>
     {% empty %}
-      <tr><td colspan="6" style="padding:14px 6px;color:var(--muted)">Is period mein koi valid supply nahi.</td></tr>
+      <tr><td colspan="6" style="padding:14px 6px;color:var(--muted)">No valid supplies in this period.</td></tr>
     {% endfor %}
   </table>
 </div>

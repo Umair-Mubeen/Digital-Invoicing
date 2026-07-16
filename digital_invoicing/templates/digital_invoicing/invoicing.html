@@ -232,7 +232,7 @@
 
       <div class="actions">
         <span id="draftNote" class="hint" style="flex:1;align-self:center;display:none">Draft saved locally</span>
-        <button type="button" class="btn btn-ghost" onclick="clearDraft(true)" title="Form khali karein (Alt+N)">Clear</button>
+        <button type="button" class="btn btn-ghost" onclick="clearDraft(true)" title="Clear form (Alt+N)">Clear</button>
         <button type="button" class="btn btn-ghost" onclick="viewJSON()">View JSON</button>
         <button type="button" class="btn" style="border:1px solid var(--green-d);color:var(--green-d);background:#fff" onclick="validateInvoice(this)" title="Alt+V">✓ Validate with FBR</button>
         <button type="button" class="btn btn-green" onclick="submitInvoice(this)" title="Ctrl+Enter">Submit to FBR</button>
@@ -765,7 +765,7 @@ async function validateInvoice(btn){
       const st=((d.validationResponse&&d.validationResponse.invoiceStatuses)||[])
         .filter(s=>s.errorCode||s.error);
       showErrPanel(st.length?st:[{errorCode:'', error:(d.error||(d.validationResponse&&d.validationResponse.error)||'Validation failed')}],
-                   'FBR validation failed — fix kar ke dobara try karein');
+                   'FBR validation failed — fix the errors and try again');
     }
   }catch(e){ alert('Network error'); }
   btn.disabled=false; btn.textContent=t0;
@@ -775,21 +775,21 @@ async function validateInvoice(btn){
 /* ---------- Error panel (alert() ki jagah) ---------- */
 // Aam FBR errors ka operator-friendly matlab (Error Guide se codes).
 const ERR_HELP = {
-  "0002": "Buyer ka NTN/CNIC format ghalat hai — NTN 7 digits ya CNIC 13 digits.",
-  "0019": "HS code ka format ghalat hai — jaise 0101.2100.",
-  "0022": "Cotton ginners par ST withheld at source zaroori hai.",
-  "0044": "Item ka HS code khali hai — product master mein daal dein.",
-  "0046": "Rate is sale type se match nahi karta.",
-  "0050": "Cotton ginners: STWH ya zero ho ya sales tax ke barabar.",
-  "0062": "Steel melting/re-rolling ke liye UoM 'MT' hona chahiye.",
-  "0077": "Is rate par SRO/Schedule number zaroori hai.",
-  "0078": "SRO diya hai to Item Serial No. bhi zaroori hai.",
-  "0090": "3rd Schedule goods par retail price (MRP) zaroori hai.",
-  "0097": "Potassium Chlorate ke liye UoM 'KG' hona chahiye.",
-  "0098": "Quantity zero nahi ho sakti.",
-  "0102": "Sales tax MRP × rate ke barabar hona chahiye.",
-  "0104": "Sales tax value × rate ke barabar hona chahiye.",
-  "0105": "Sales tax = quantity × fixed rate hona chahiye.",
+  "0002": "Buyer NTN/CNIC format is wrong — NTN is 7 digits, CNIC is 13.",
+  "0019": "HS code format is wrong — e.g. 0101.2100.",
+  "0022": "ST withheld at source is required for Cotton ginners.",
+  "0044": "Item HS code is empty — set it on the product.",
+  "0046": "Rate does not match the selected sale type.",
+  "0050": "Cotton ginners: STWH must be zero or equal to sales tax.",
+  "0062": "Steel melting/re-rolling requires UoM 'MT'.",
+  "0077": "This rate requires an SRO/Schedule number.",
+  "0078": "Item Serial No. is required when an SRO is provided.",
+  "0090": "3rd Schedule goods require a retail price (MRP).",
+  "0097": "Potassium Chlorate requires UoM 'KG'.",
+  "0098": "Quantity cannot be zero.",
+  "0102": "Sales tax must equal MRP × rate.",
+  "0104": "Sales tax must equal value × rate.",
+  "0105": "Sales tax must equal quantity × fixed rate.",
 };
 function showErrPanel(statuses, title){
   const p=document.getElementById('errPanel'), b=document.getElementById('errPanelBody');
@@ -827,7 +827,7 @@ function restoreDraft(){
     const d = JSON.parse(raw);
     if(!d.items || !d.items.length) return;
     const age = Math.round((Date.now()-(d.ts||0))/60000);
-    if(!confirm(`Ek adhoori invoice mili (${age} min purani, ${d.items.length} item).\nWapis load karein?`)){
+    if(!confirm(`Found an unfinished invoice (${age} min old, ${d.items.length} item(s)).\nRestore it?`)){
       localStorage.removeItem(DRAFT_KEY); return;
     }
     Object.entries(d.hdr||{}).forEach(([id,v])=>{ const el=document.getElementById(id); if(el&&v) el.value=v; });
@@ -838,7 +838,7 @@ function restoreDraft(){
   }catch(e){ /* corrupt draft — ignore */ }
 }
 function clearDraft(askFirst){
-  if(askFirst && !confirm('Form khali kar dein? Local draft bhi delete hoga.')) return;
+  if(askFirst && !confirm('Clear the form? The local draft will also be deleted.')) return;
   try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}
   if(askFirst) location.reload();
   const n=document.getElementById('draftNote'); if(n) n.style.display='none';

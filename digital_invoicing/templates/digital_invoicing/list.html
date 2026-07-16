@@ -159,13 +159,13 @@ async function toggleItems(btn, pk){
   cell.innerHTML = html;
 }
 async function cancelItem(pk, itemId){
-  if(!confirm('Item IRIS par cancel ho chuka? System mein bhi cancelled mark hoga.')) return;
+  if(!confirm('Already cancelled this item on IRIS? It will be marked cancelled here too.')) return;
   const r = await fetch(pk+'/items/'+itemId+'/cancel/',{method:'POST',headers:{'X-CSRFToken':getCookie('csrftoken')}});
   const d = await r.json();
   if(d.ok){ location.reload(); } else { alert(d.error || 'Failed'); }
 }
 async function editItem(pk, itemId){
-  const v = prompt('Naya value (excl. ST) — tax khud recompute hoga. Har item sirf EK baar edit ho sakta hai:');
+  const v = prompt('New value (excl. ST) — tax will be recomputed. Each item can be edited only ONCE:');
   if(v === null || v === '' || isNaN(+v)) return;
   const r = await fetch(pk+'/items/'+itemId+'/edit/',{method:'POST',
     headers:{'X-CSRFToken':getCookie('csrftoken'),'Content-Type':'application/json'},

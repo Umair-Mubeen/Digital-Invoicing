@@ -12,6 +12,9 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--user", required=True)
+        parser.add_argument("--allow-mock", action="store_true",
+                            help="Mock client ke against chalne do (sirf dev "
+                                 "smoke-test — ye CERTIFICATION NAHI hai)")
         parser.add_argument("--only", default="",
                             help="Comma-separated codes, e.g. SN001,SN005")
         parser.add_argument("--post", action="store_true",
@@ -29,9 +32,33 @@ class Command(BaseCommand):
         profile = SellerProfile.objects.filter(user=user).first()
         if not profile:
             raise CommandError("Seller profile nahi mila")
-        if not profile.use_sandbox and not opts.get("force_prod"):
-            raise CommandError("Profile sandbox mode mein nahi hai — "
-                               "pehle sandbox on karein")
+
+        # --- Preflight: mock ke against "28/28 PASS" jhoota certification hai ---
+        from django.conf import settings
+        from digital_invoicing.fbr_client import get_fbr_client, MockFBRClient
+        client = get_fbr_client(profile)
+        if isinstance(client, MockFBRClient) and not opts["allow_mock"]:
+            why = []
+            if getattr(settings, "FBR_USE_MOCK", True):
+                why.append("settings.FBR_USE_MOCK=True (.env mein FBR_USE_MOCK=0 karein)")
+            if not getattr(profile, "fbr_token", ""):
+                why.append(f"'{profile.business_name}' ka FBR token khali hai "
+                           "(Settings page se daalein)")
+            raise CommandError(
+                "MOCK client active hai — ye asli sandbox test NAHI hoga.\n  - "
+                + "\n  - ".join(why or ["config check karein"])
+                + "\nSirf dev smoke-test chahiye to --allow-mock lagayein.")
+
+        mode = "SANDBOX" if profile.use_sandbox else "PRODUCTION"
+        if isinstance(client, MockFBRClient):
+            mode = "MOCK (certification nahi)"
+        self.stdout.write(self.style.WARNING(
+            f"Target: {mode} · business: {profile.business_name} "
+            f"({profile.ntn_cnic})"))
+        if not profile.use_sandbox and not isinstance(client, MockFBRClient):
+            raise CommandError(
+                "Profile PRODUCTION par hai — scenarios sirf sandbox par "
+                "chalayein (Settings → Sandbox mode ON).")
         codes = ([c.strip().upper() for c in opts["only"].split(",")
                   if c.strip()] or None)
         results = run_scenarios(profile, codes=codes,

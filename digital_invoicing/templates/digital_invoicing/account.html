@@ -1,0 +1,110 @@
+{% extends "digital_invoicing/base_di.html" %}
+{% block na_account %}on{% endblock %}
+{% block di_title_text %}My Account{% endblock %}
+{% block di_title %}My Account{% endblock %}
+{% block di_subtitle %}Sign-in details and account security{% endblock %}
+
+{% block di_head %}
+<style>
+  /* acx- namespace — global classes (.mode/.field/...) se koi takrao nahi */
+  .acx{max-width:1060px;margin:0 auto}
+  .acx-grid{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:18px;align-items:start}
+  @media(max-width:900px){.acx-grid{grid-template-columns:1fr}}
+  .acx-sec{padding:20px 22px}
+  .acx-sec + .acx-sec{border-top:1px solid var(--line)}
+  .acx-sec h4{margin:0 0 4px;font-size:14.5px;color:var(--navy);font-weight:700;letter-spacing:-.01em}
+  .acx-sec .sub{font-size:12.5px;color:var(--muted);margin:0 0 16px;line-height:1.5}
+  .acx-f{margin-bottom:14px;min-width:0}
+  .acx-f label{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .acx-f label i{font-style:normal;text-transform:none;letter-spacing:0;font-weight:400;color:var(--faint)}
+  .acx-f input{width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--line);
+    border-radius:10px;font:inherit;font-size:13.5px;background:#fff;transition:border-color .15s,box-shadow .15s}
+  .acx-f input:hover{border-color:#c8d6e5}
+  .acx-f input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(13,158,114,.12)}
+  .acx-f input:disabled{background:#f2f6fa;color:var(--muted)}
+  .acx-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:560px){.acx-row{grid-template-columns:1fr}}
+  .acx-btn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--green),var(--green-d));
+    color:#fff;border:none;border-radius:10px;padding:10px 18px;font:700 13px var(--font,inherit);cursor:pointer;
+    box-shadow:0 8px 18px -8px rgba(13,158,114,.55);transition:transform .12s}
+  .acx-btn:hover{transform:translateY(-1px)}
+  .acx-flash{border-radius:10px;padding:11px 14px;font-size:13px;font-weight:600;margin-bottom:16px}
+  .acx-flash.ok{background:#eaf7f1;border:1px solid #bfe6d4;color:var(--green-d)}
+  .acx-flash.err{background:#fdecea;border:1px solid #f3c9c9;color:var(--danger);font-weight:500}
+  /* security timeline */
+  .acx-tl{position:relative;margin:4px 0 0;padding:0 0 0 18px;border-left:2px solid var(--line)}
+  .acx-ev{position:relative;padding:0 0 16px 14px;font-size:12.5px;min-width:0}
+  .acx-ev:last-child{padding-bottom:2px}
+  .acx-ev::before{content:"";position:absolute;left:-23.5px;top:3px;width:9px;height:9px;border-radius:50%;
+    background:var(--green);border:2px solid #fff;box-shadow:0 0 0 1.5px var(--line)}
+  .acx-ev.bad::before{background:var(--danger)}
+  .acx-ev b{display:block;color:var(--ink);font-weight:600}
+  .acx-ev.bad b{color:var(--danger)}
+  .acx-ev span{color:var(--muted);font-size:11.5px}
+</style>
+{% endblock %}
+
+{% block di_content %}
+<div class="acx">
+{% if saved %}<div class="acx-flash ok">✓ Email saved.</div>{% endif %}
+{% if pw_saved %}<div class="acx-flash ok">✓ Password changed — you stay logged in on this device.</div>{% endif %}
+
+<div class="acx-grid">
+
+  <div class="di-card" style="padding:0;overflow:hidden">
+    <div class="acx-sec">
+      <h4>Sign-in details</h4>
+      <p class="sub">Your username is fixed. Add an email so the account can be recovered.</p>
+      <form method="post">{% csrf_token %}<input type="hidden" name="form" value="email">
+        <div class="acx-row">
+          <div class="acx-f"><label>Username</label>
+            <input value="{{ request.user.username }}" disabled></div>
+          <div class="acx-f"><label>Email <i>— for recovery</i></label>
+            <input type="email" name="email" value="{{ request.user.email }}" placeholder="you@example.com"></div>
+        </div>
+        <button type="submit" class="acx-btn">Save email</button>
+      </form>
+    </div>
+
+    <div class="acx-sec">
+      <h4>Change password</h4>
+      <p class="sub">Minimum 8 characters. You'll stay logged in on this device.</p>
+      {% if pw_form.errors %}<div class="acx-flash err">
+        {% for field, errs in pw_form.errors.items %}{{ errs|join:" " }} {% endfor %}</div>{% endif %}
+      <form method="post">{% csrf_token %}<input type="hidden" name="form" value="password">
+        <div class="acx-f"><label>Current password</label>
+          <input type="password" name="old_password" required autocomplete="current-password"></div>
+        <div class="acx-row">
+          <div class="acx-f"><label>New password</label>
+            <input type="password" name="new_password1" required autocomplete="new-password"></div>
+          <div class="acx-f"><label>Confirm new password</label>
+            <input type="password" name="new_password2" required autocomplete="new-password"></div>
+        </div>
+        <button type="submit" class="acx-btn">Change password</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="di-card">
+    <h3>Security</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin:2px 0 18px;line-height:1.5">
+      Recent sign-ins and credential changes on your account.</p>
+    <div class="acx-tl">
+      {% for e in security_events %}
+        <div class="acx-ev {% if e.action == 'login_failed' or e.action == 'token_removed' %}bad{% endif %}">
+          <b>{% if e.action == "login_failed" %}Login failed{% else %}{{ e.get_action_display }}{% endif %}</b>
+          <span>{{ e.created_at|date:"D d M · H:i" }} · IP {{ e.ip }}</span>
+        </div>
+      {% empty %}
+        <div class="acx-ev"><b>No events yet</b><span>Sign-ins will appear here.</span></div>
+      {% endfor %}
+    </div>
+    <a href="{% url 'digital_invoicing:activity' %}"
+       style="display:inline-block;margin-top:14px;font-size:12.5px;font-weight:700;color:var(--green-d);text-decoration:none">
+      Full history in Audit Log →</a>
+  </div>
+
+</div>
+</div>
+{% endblock %}

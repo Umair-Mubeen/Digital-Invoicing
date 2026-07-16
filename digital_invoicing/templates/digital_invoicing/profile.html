@@ -2,7 +2,7 @@
 {% block na_profile %}on{% endblock %}
 {% block di_title_text %}Businesses{% endblock %}
 {% block di_title %}Businesses{% endblock %}
-{% block di_subtitle %}Aapke suppliers/businesses — invoice inhi ke naam se banti hai{% endblock %}
+{% block di_subtitle %}Your businesses — invoices are issued under these{% endblock %}
 
 {% block di_head %}
 <style>
@@ -71,7 +71,7 @@
         <div class="field"><label>Address *</label>
           <input name="address" required maxlength="500" placeholder="Business address"
                  value="{{ editing.address|default:'' }}"></div>
-        <div class="field"><label>FBR Token <span style="text-transform:none;font-weight:400;color:var(--faint)">(PRAL se — optional)</span></label>
+        <div class="field"><label>FBR Token <span style="text-transform:none;font-weight:400;color:var(--faint)">(from PRAL — optional)</span></label>
           {% if editing and editing.token_masked %}
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
               <span style="background:#eaf7f1;border:1px solid #bfe6d4;color:var(--green-d);border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:700">✓ Token set</span>
@@ -79,11 +79,11 @@
             </div>
           {% endif %}
           <input name="fbr_token" type="password" value="" autocomplete="new-password"
-                 placeholder="{% if editing and editing.token_masked %}Naya token daalein (khali = purana barqarar){% else %}Bearer token (na ho to mock mode){% endif %}"
+                 placeholder="{% if editing and editing.token_masked %}Enter a new token (blank = keep existing){% else %}Bearer token (mock mode if empty){% endif %}"
                  style="font-family:ui-monospace,monospace;font-size:12px">
           {% if editing and editing.token_masked %}
           <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--danger);margin-top:7px;cursor:pointer">
-            <input type="checkbox" name="remove_token"> Token remove karein (FBR submissions band ho jayengi)
+            <input type="checkbox" name="remove_token"> Remove token (FBR submissions will stop)
           </label>
           {% endif %}
         </div>
@@ -92,7 +92,7 @@
           Sandbox (testing) mode
         </label>
         <div id="modeWarn" style="display:none;background:#fdf6e1;border:1px solid #ecd9a0;color:#8a6508;border-radius:8px;padding:9px 11px;font-size:12px;font-weight:600;margin-bottom:14px">
-          ⚠ Production mode — is business ki invoices FBR par ASAL jama hongi (cancel sirf 72 ghante mein IRIS se).
+          ⚠ Production mode — this business's invoices will be REAL FBR submissions (corrections only within 72 hours via IRIS).
         </div>
         <script>
         (function(){

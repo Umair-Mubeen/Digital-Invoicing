@@ -1757,8 +1757,33 @@ class SandboxScenarioRunnerTests(TestCase):
         from io import StringIO
         out = StringIO()
         call_command("run_sandbox_scenarios", user="m7user",
-                     only="SN001,SN021", stdout=out)
+                     only="SN001,SN021", allow_mock=True, stdout=out)
         self.assertIn("2/2 passed", out.getvalue())
+
+    def test_command_blocks_false_certification_on_mock(self):
+        """Mock ke against 28/28 PASS = jhoota certification. Block hona chahiye."""
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        with self.assertRaises(CommandError) as cm:
+            call_command("run_sandbox_scenarios", user="m7user",
+                         only="SN001")
+        msg = str(cm.exception)
+        self.assertIn("MOCK client active", msg)
+        self.assertIn("FBR_USE_MOCK", msg)
+
+    def test_command_blocks_production_target(self):
+        """Scenarios production par kabhi na chalein."""
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        from django.test import override_settings
+        self.profile.fbr_token = "FAKE_TOKEN"
+        self.profile.use_sandbox = False
+        self.profile.save()
+        with override_settings(FBR_USE_MOCK=False):
+            with self.assertRaises(CommandError) as cm:
+                call_command("run_sandbox_scenarios", user="m7user",
+                             only="SN001")
+        self.assertIn("PRODUCTION", str(cm.exception))
 
 
 class SprintGapClosureTests(TestCase):
@@ -2198,10 +2223,86 @@ class SettingsUITests(TestCase):
     def test_production_warning_present(self):
         r = self.client.get(f"/digital-invoicing/profile/?edit={self.p.pk}")
         self.assertContains(r, "Production mode")
-        self.assertContains(r, "ASAL jama hongi")
+        self.assertContains(r, "REAL FBR submissions")
 
     def test_other_fields_still_save(self):
         self._post(business_name="Acme Renamed", address="New Address")
         self.p.refresh_from_db()
         self.assertEqual(self.p.business_name, "Acme Renamed")
         self.assertEqual(self.p.fbr_token_plain, "REAL_TOKEN_ABCD")
+
+
+class FinalThreeScreensTests(TestCase):
+    """UI sprint — Audit Log, My Account, Help screens."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user("f3ui", password="OldPass123!")
+        SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K")
+        self.client.login(username="f3ui", password="OldPass123!")
+
+    # ---- Audit Log ----
+    def test_audit_log_filters_and_csv(self):
+        from .models import AuditLog
+        AuditLog.objects.create(user=self.user, action="login", ip="1.1.1.1")
+        AuditLog.objects.create(user=self.user, action="invoice_valid",
+                                ip="1.1.1.1", detail={"total": 500})
+        r = self.client.get("/digital-invoicing/activity/?action=login")
+        self.assertContains(r, "1 event")                       # filtered count
+        self.assertNotContains(r, 'class="pill valid"')          # valid-invoice row nahi
+        r = self.client.get("/digital-invoicing/activity/?export=csv")
+        self.assertIn("text/csv", r["Content-Type"])
+        self.assertIn("Login", r.content.decode("utf-8"))
+
+    def test_audit_log_owner_isolation(self):
+        from django.contrib.auth.models import User
+        from .models import AuditLog
+        other = User.objects.create_user("f3ui2", password="x")
+        AuditLog.objects.create(user=other, action="login", ip="9.9.9.9")
+        r = self.client.get("/digital-invoicing/activity/")
+        self.assertNotContains(r, "9.9.9.9")
+
+    # ---- My Account ----
+    def test_email_update(self):
+        self.client.post("/digital-invoicing/account/",
+                         {"form": "email", "email": "u@x.pk"})
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, "u@x.pk")
+
+    def test_password_change_keeps_session(self):
+        r = self.client.post("/digital-invoicing/account/", {
+            "form": "password", "old_password": "OldPass123!",
+            "new_password1": "NewPass456!", "new_password2": "NewPass456!"})
+        self.assertContains(r, "Password changed")
+        # session valid rahe (update_session_auth_hash)
+        r = self.client.get("/digital-invoicing/account/")
+        self.assertEqual(r.status_code, 200)
+        # naya password kaam kare
+        self.client.logout()
+        self.assertTrue(self.client.login(username="f3ui",
+                                          password="NewPass456!"))
+
+    def test_password_change_wrong_old_rejected(self):
+        self.client.post("/digital-invoicing/account/", {
+            "form": "password", "old_password": "WRONG",
+            "new_password1": "NewPass456!", "new_password2": "NewPass456!"})
+        self.client.logout()
+        self.assertTrue(self.client.login(username="f3ui",
+                                          password="OldPass123!"))
+
+    # ---- Help ----
+    def test_help_page(self):
+        r = self.client.get("/digital-invoicing/help/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "From setup to live")
+        self.assertContains(r, "<kbd>Ctrl</kbd> + <kbd>Enter</kbd>")
+        self.assertContains(r, "0044")
+        self.assertContains(r, "Sandbox")
+
+    def test_sidebar_has_new_links(self):
+        r = self.client.get("/digital-invoicing/dashboard/")
+        self.assertContains(r, "My Account")
+        self.assertContains(r, "Help")
+        self.assertContains(r, "Audit Log")

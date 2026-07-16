@@ -1,0 +1,126 @@
+{% extends "digital_invoicing/base_di.html" %}
+{% block na_help %}on{% endblock %}
+{% block di_title_text %}Help{% endblock %}
+{% block di_title %}Help &amp; Getting Started{% endblock %}
+{% block di_subtitle %}From first login to live FBR invoices{% endblock %}
+
+{% block di_head %}
+<style>
+  /* hpx- namespace — .mode/.note/... global classes se koi takrao nahi */
+  .hpx{max-width:1120px;margin:0 auto}
+  .hpx-grid{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:18px;align-items:start}
+  @media(max-width:940px){.hpx-grid{grid-template-columns:1fr}}
+  .hpx a{color:var(--green-d);font-weight:600;text-decoration:none}
+  .hpx a:hover{text-decoration:underline}
+  /* stepper — connected line, ye page ka signature */
+  .hpx-steps{position:relative;margin:6px 0 0;padding:0;list-style:none}
+  .hpx-steps::before{content:"";position:absolute;left:14px;top:10px;bottom:14px;width:2px;
+    background:linear-gradient(180deg,var(--green) 0%,var(--line) 100%)}
+  .hpx-step{position:relative;display:flex;gap:16px;padding:0 0 22px;min-width:0}
+  .hpx-step:last-child{padding-bottom:4px}
+  .hpx-step .n{position:relative;z-index:1;flex-shrink:0;width:30px;height:30px;border-radius:10px;
+    background:linear-gradient(135deg,var(--green),var(--green-d));color:#fff;font-weight:800;font-size:13.5px;
+    display:grid;place-items:center;box-shadow:0 6px 14px -6px rgba(13,158,114,.6)}
+  .hpx-step .b{min-width:0;font-size:13.5px;line-height:1.6;padding-top:4px}
+  .hpx-step .b b{color:var(--navy)}
+  /* reference rail cards */
+  .hpx-mrow{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);
+    font-size:12.5px;line-height:1.55;align-items:flex-start;min-width:0}
+  .hpx-mrow:last-child{border-bottom:none}
+  .hpx-mrow .b{min-width:0}
+  .hpx-tag{flex-shrink:0;font-size:10px;font-weight:800;letter-spacing:.06em;border-radius:6px;
+    padding:4px 0;margin-top:2px;width:66px;text-align:center}
+  .hpx-tag.mock{background:#fdf6e1;border:1px solid #ecd9a0;color:#8a6508}
+  .hpx-tag.sb{background:#eef4fd;border:1px solid #c8dcf5;color:#1d5aa8}
+  .hpx-tag.live{background:#eaf7f1;border:1px solid #bfe6d4;color:var(--green-d)}
+  .hpx kbd{display:inline-block;min-width:16px;text-align:center;background:#fff;border:1px solid var(--line);
+    border-bottom-width:2.5px;border-radius:6px;padding:2px 7px;font:600 11px ui-monospace,monospace;
+    color:var(--navy);box-shadow:var(--shadow)}
+  .hpx-krow{display:flex;justify-content:space-between;align-items:center;gap:12px;
+    padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+  .hpx-krow:last-of-type{border-bottom:none}
+  .hpx-erow{display:flex;gap:11px;padding:8px 0;border-bottom:1px solid var(--line);
+    font-size:12.5px;line-height:1.5;align-items:flex-start;min-width:0}
+  .hpx-erow:last-child{border-bottom:none}
+  .hpx-erow .b{min-width:0}
+  .hpx-code{flex-shrink:0;font:700 11px ui-monospace,monospace;background:#fdecea;
+    border:1px solid #f3c9c9;color:var(--danger);border-radius:6px;padding:3px 7px;margin-top:1px}
+  .hpx-trow{padding:11px 0;border-bottom:1px solid var(--line);font-size:13px;line-height:1.6;min-width:0}
+  .hpx-trow:last-child{border-bottom:none}
+  .hpx-trow b{display:block;color:var(--navy);margin-bottom:2px}
+  .hpx-hint{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.55;
+    background:#f7fafc;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+</style>
+{% endblock %}
+
+{% block di_content %}
+<div class="hpx">
+<div class="hpx-grid">
+
+  <div style="min-width:0">
+    <div class="di-card" style="margin-bottom:18px">
+      <h3>From setup to live — 5 steps</h3>
+      <ol class="hpx-steps">
+        <li class="hpx-step"><span class="n">1</span>
+          <div class="b"><b><a href="{% url 'digital_invoicing:profile' %}">Business Profile</a></b> — add your business: NTN, province, address.</div></li>
+        <li class="hpx-step"><span class="n">2</span>
+          <div class="b">Add your <b>FBR sandbox token</b> there (from IRIS → Digital Invoicing) and keep <b>Sandbox mode ON</b>.</div></li>
+        <li class="hpx-step"><span class="n">3</span>
+          <div class="b">Add <b><a href="{% url 'digital_invoicing:buyers' %}">Buyers</a></b> and <b><a href="{% url 'digital_invoicing:products' %}">Products</a></b> — set each product's HS code and sale type once; every invoice reuses them.</div></li>
+        <li class="hpx-step"><span class="n">4</span>
+          <div class="b"><b><a href="{% url 'digital_invoicing:create' %}">Create Invoice</a></b> — tax is calculated automatically. <b>Validate</b>, then <b>Submit</b>.</div></li>
+        <li class="hpx-step"><span class="n">5</span>
+          <div class="b">Once all sandbox scenarios pass, get your <b>production token</b> from IRIS, replace it in Business Profile, and turn Sandbox mode OFF.</div></li>
+      </ol>
+    </div>
+
+    <div class="di-card">
+      <h3>If something goes wrong</h3>
+      <div class="hpx-trow"><b>Invoice stuck on "Pending retry"</b>
+        Network issue — the system retries automatically (5 min → 6 hrs). <a href="{% url 'digital_invoicing:list' %}?status=pending_retry">Check the queue</a>.</div>
+      <div class="hpx-trow"><b>"Verify on IRIS portal" message</b>
+        The request may have reached FBR. Check IRIS before resubmitting, to avoid a duplicate invoice.</div>
+      <div class="hpx-trow"><b>Rates look outdated</b>
+        Run reference sync, or edit rates (date-effective) in the Admin Panel.</div>
+      <div class="hpx-trow"><b>Support</b>
+        TaxBuddy Umair · <a href="https://taxbuddyumair.com" target="_blank" rel="noopener">taxbuddyumair.com</a></div>
+    </div>
+  </div>
+
+  <div style="min-width:0">
+    <div class="di-card" style="margin-bottom:18px">
+      <h3>Modes</h3>
+      <div class="hpx-mrow"><span class="hpx-tag mock">MOCK</span>
+        <div class="b">No token configured. Invoices are simulated locally — nothing goes to FBR.</div></div>
+      <div class="hpx-mrow"><span class="hpx-tag sb">SANDBOX</span>
+        <div class="b">FBR's test environment. Real API, test records — required for certification.</div></div>
+      <div class="hpx-mrow"><span class="hpx-tag live">LIVE</span>
+        <div class="b">Real invoices with legal effect. Corrections only within <b>72 hours</b> via IRIS, capped at <b>10%</b> of last month's sales.</div></div>
+      <div class="hpx-hint">The badge in the top bar always shows the current mode.</div>
+    </div>
+
+    <div class="di-card" style="margin-bottom:18px">
+      <h3>Shortcuts — invoice screen</h3>
+      <div class="hpx-krow"><span>Add item row</span><span><kbd>Alt</kbd> + <kbd>A</kbd></span></div>
+      <div class="hpx-krow"><span>Validate with FBR</span><span><kbd>Alt</kbd> + <kbd>V</kbd></span></div>
+      <div class="hpx-krow"><span>Submit to FBR</span><span><kbd>Ctrl</kbd> + <kbd>Enter</kbd></span></div>
+      <div class="hpx-krow"><span>New invoice</span><span><kbd>Alt</kbd> + <kbd>N</kbd></span></div>
+      <div class="hpx-krow"><span>Close error panel</span><span><kbd>Esc</kbd></span></div>
+      <div class="hpx-hint">Work is auto-saved locally while you type — if the browser closes, you'll be offered to restore it.</div>
+    </div>
+
+    <div class="di-card">
+      <h3>Common FBR errors</h3>
+      <div class="hpx-erow"><span class="hpx-code">0002</span><div class="b">Buyer NTN must be 7 digits (or CNIC 13)</div></div>
+      <div class="hpx-erow"><span class="hpx-code">0044</span><div class="b">Item HS code is empty — set it on the product</div></div>
+      <div class="hpx-erow"><span class="hpx-code">0046</span><div class="b">Rate doesn't match the selected sale type</div></div>
+      <div class="hpx-erow"><span class="hpx-code">0062</span><div class="b">Steel melting / re-rolling requires UoM "MT"</div></div>
+      <div class="hpx-erow"><span class="hpx-code">0090</span><div class="b">3rd Schedule goods need a retail price (MRP)</div></div>
+      <div class="hpx-erow"><span class="hpx-code">0104</span><div class="b">Sales tax must equal value × rate</div></div>
+      <div class="hpx-hint">When validation fails, the invoice screen explains each error inline with a fix.</div>
+    </div>
+  </div>
+
+</div>
+</div>
+{% endblock %}

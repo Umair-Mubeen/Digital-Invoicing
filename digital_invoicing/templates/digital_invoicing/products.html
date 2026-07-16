@@ -59,7 +59,7 @@
       <tr style="border-top:1px solid var(--line)">
         <td style="padding:8px 6px;font-weight:600">{{ p.name }}{% if p.category %} <span style="color:var(--muted);font-weight:400">· {{ p.category.name }}</span>{% endif %}</td>
         <td>{{ p.sku|default:"—" }}</td>
-        <td>{% if p.hs_code %}<span class="num">{{ p.hs_code }}</span>{% else %}<span style="color:#8a6508;font-size:11px;font-weight:700" title="Invoice par HS zaroori hai (FBR 0044)">⚠ missing</span>{% endif %}</td>
+        <td>{% if p.hs_code %}<span class="num">{{ p.hs_code }}</span>{% else %}<span style="color:#8a6508;font-size:11px;font-weight:700" title="HS code is required on invoices (FBR 0044)">⚠ missing</span>{% endif %}</td>
         <td style="font-size:12px">{{ p.sale_type }}</td>
         <td class="num">Rs {{ p.default_price|floatformat:0 }}</td>
         <td class="num">{% if p.track_stock %}{% if p.stock <= 0 %}<span style="color:var(--danger);font-weight:700">{{ p.stock|floatformat:"-2" }}</span>{% else %}{{ p.stock|floatformat:"-2" }}{% endif %}{% else %}—{% endif %}</td>
@@ -104,7 +104,7 @@ if(hsIn){
     const v=hsIn.value.trim();
     if(!v){ h.textContent=''; return; }
     if(/^\d{4}(\.\d{2,4})?$/.test(v)){ h.textContent='✓ Valid HS format'; h.style.color='var(--green-d)'; }
-    else { h.textContent='⚠ Format: 0101.2100 (FBR error 0019 se bachne ke liye)'; h.style.color='#b8860b'; }
+    else { h.textContent='⚠ Format: 0101.2100 (avoids FBR error 0019)'; h.style.color='#b8860b'; }
   });
 }
 </script>

@@ -11,11 +11,11 @@
       <div><b>TaxBuddy Umair</b><span>Digital Invoicing</span></div>
     </div>
     <div>
-      <h2>FBR Digital Invoicing — bina tax rules yaad kiye.</h2>
+      <h2>FBR Digital Invoicing — without memorizing tax rules.</h2>
       <div class="pts">
-        <div class="pt"><span class="tick">✓</span><span>Sab 28 FBR sandbox scenarios — sale type chunein, tax engine rate, ST aur further tax khud nikalta hai</span></div>
-        <div class="pt"><span class="tick">✓</span><span>45 FBR error checks submit se pehle — ghalat invoice FBR tak jati hi nahi</span></div>
-        <div class="pt"><span class="tick">✓</span><span>Net ka masla? Auto-retry queue khud dobara submit karti hai</span></div>
+        <div class="pt"><span class="tick">✓</span><span>All 28 FBR sandbox scenarios — pick a sale type and the tax engine works out rate, ST and further tax</span></div>
+        <div class="pt"><span class="tick">✓</span><span>45 FBR error checks before submission — bad invoices never reach FBR</span></div>
+        <div class="pt"><span class="tick">✓</span><span>Network trouble? The auto-retry queue resubmits for you</span></div>
       </div>
     </div>
     <div class="strip">
@@ -28,7 +28,7 @@
   <main class="lform">
     <div class="lcard">
       <h1>Welcome back</h1>
-      <div class="sub">Apne account mein log in karein</div>
+      <div class="sub">Log in to your account</div>
 
       {% if form.errors %}<div class="err">Incorrect username or password — please try again.</div>{% endif %}
       {% if locked %}<div class="err" style="font-weight:600">{{ locked }}</div>{% endif %}
@@ -44,7 +44,7 @@
             <button type="button" id="pwToggle" onclick="togglePw()" aria-label="Show password"
               style="position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:none;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;padding:6px 8px;letter-spacing:.04em">SHOW</button>
           </div>
-          <div id="capsWarn" class="hint" style="display:none;color:#b8860b;font-weight:600" role="alert">⚠ Caps Lock on hai</div>
+          <div id="capsWarn" class="hint" style="display:none;color:#b8860b;font-weight:600" role="alert">⚠ Caps Lock is on</div>
         </div>
         <button class="bsub" type="submit" id="loginBtn">Login</button>
       </form>

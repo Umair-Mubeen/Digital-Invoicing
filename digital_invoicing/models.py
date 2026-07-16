@@ -284,6 +284,7 @@ class AuditLog(models.Model):
         ("invoices_exported", "Invoice list exported"),
         ("token_updated", "FBR token updated"),
         ("token_removed", "FBR token removed"),
+        ("password_changed", "Password changed"),
     ]
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                              on_delete=models.SET_NULL, related_name="audit_logs")

@@ -92,7 +92,7 @@
           <input name="business_name" required value="{{ editing.business_name|default:'' }}"></div>
         <div class="field"><label>NTN / CNIC</label>
           <input name="ntn_cnic" id="bNtn" value="{{ editing.ntn_cnic|default:'' }}" inputmode="numeric" oninput="ntnCheck(this)">
-          <div id="ntnHint" style="font-size:11.5px;margin-top:3px;color:var(--faint)">7 digits (NTN) ya 13 digits (CNIC)</div></div>
+          <div id="ntnHint" style="font-size:11.5px;margin-top:3px;color:var(--faint)">7 digits (NTN) or 13 digits (CNIC)</div></div>
         <div class="field"><label>STRN (Sales Tax Reg No)</label>
           <input name="strn" value="{{ editing.strn|default:'' }}"></div>
         <div class="field"><label>Registration Type</label>
@@ -139,10 +139,10 @@ function exportCSV(){
 }
 function ntnCheck(i){
   const v=i.value.replace(/[^0-9]/g,''), h=document.getElementById('ntnHint');
-  if(!v){ h.textContent='7 digits (NTN) ya 13 digits (CNIC)'; h.style.color='var(--faint)'; return; }
+  if(!v){ h.textContent='7 digits (NTN) or 13 digits (CNIC)'; h.style.color='var(--faint)'; return; }
   if(v.length===7){ h.textContent='✓ Valid NTN format'; h.style.color='var(--green-d)'; }
   else if(v.length===13){ h.textContent='✓ Valid CNIC format'; h.style.color='var(--green-d)'; }
-  else { h.textContent='⚠ '+v.length+' digits — NTN 7 ya CNIC 13 hone chahiyein (FBR error 0002 se bachne ke liye)'; h.style.color='#b8860b'; }
+  else { h.textContent='⚠ '+v.length+' digits — NTN must be 7 or CNIC 13 (avoids FBR error 0002)'; h.style.color='#b8860b'; }
 }
 </script>
 {% endblock %}
