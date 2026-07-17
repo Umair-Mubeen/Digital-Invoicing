@@ -282,3 +282,41 @@ def validate_invoice(p: dict) -> list:
         errors.append(_err("0021", "At least one item is required"))
 
     return errors
+
+
+# ---------------------------------------------------------------------------
+# R1 (Legal Compliance Matrix A10) — s.23 proviso, Sales Tax Act 1990:
+# Unregistered buyer ki qualifying supply par CNIC/NTN seller par LAZIM hai.
+# PRAL API blank accept karta hai (SN002 sample bhi), is liye ye BLOCKING
+# error nahi — WARNING hai jo UI mein amber dikhta hai, submit nahi rokta.
+# Threshold configurable (settings.UNREG_CNIC_THRESHOLD; default 100,000) —
+# ASSUMPTION stated: current Finance Act ke against verify karein.
+# ---------------------------------------------------------------------------
+
+def invoice_warnings(p: dict) -> list:
+    """Non-blocking legal-compliance warnings. [{code, warning}] return
+    karta hai; khali list = koi warning nahi."""
+    from django.conf import settings
+    warnings = []
+    threshold = float(getattr(settings, "UNREG_CNIC_THRESHOLD", 100000))
+    reg_type = (p.get("buyerRegistrationType") or "").strip()
+    buyer_id = (p.get("buyerNTNCNIC") or "").strip()
+    if reg_type == "Unregistered" and not buyer_id:
+        total = 0.0
+        for it in p.get("items", []):
+            v = _num(it.get("valueSalesExcludingST")) or 0
+            st = _num(it.get("salesTaxApplicable")) or 0
+            ft = _num(it.get("furtherTax")) or 0
+            total += v + st + ft
+        if total >= threshold:
+            warnings.append({
+                "code": "W-S23",
+                "warning": (
+                    f"Invoice total (Rs {total:,.0f}) is at/above the "
+                    f"Rs {threshold:,.0f} threshold for supplies to an "
+                    "unregistered buyer, but no buyer CNIC/NTN is given. "
+                    "Section 23, Sales Tax Act 1990 requires the buyer's "
+                    "CNIC/NTN for such supplies (FBR will still accept the "
+                    "invoice — this is the seller's own legal obligation)."),
+            })
+    return warnings

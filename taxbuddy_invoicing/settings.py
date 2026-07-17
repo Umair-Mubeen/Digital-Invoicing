@@ -198,3 +198,6 @@ LOGGING = {
     "loggers": {"django.request": {"handlers": _use, "level": "WARNING",
                                    "propagate": False}},
 }
+
+# R1 — s.23 proviso warning threshold (Rs) for unregistered-buyer CNIC
+UNREG_CNIC_THRESHOLD = float(env("UNREG_CNIC_THRESHOLD", "100000"))

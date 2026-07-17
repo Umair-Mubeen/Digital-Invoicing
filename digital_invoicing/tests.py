@@ -2306,3 +2306,153 @@ class FinalThreeScreensTests(TestCase):
         self.assertContains(r, "My Account")
         self.assertContains(r, "Help")
         self.assertContains(r, "Audit Log")
+
+
+class ComplianceR1R3Tests(TestCase):
+    """Legal Compliance Matrix — R1 (s.23 warning) + R3 (daily closing,
+    Annex-C export)."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user("compl", password="x")
+        self.profile = SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K")
+        self.client.login(username="compl", password="x")
+
+    def _payload(self, value, reg="Unregistered", buyer_id=""):
+        return {"invoiceType": "Sale Invoice", "invoiceDate": "2026-07-01",
+                "buyerRegistrationType": reg, "buyerNTNCNIC": buyer_id,
+                "items": [{"valueSalesExcludingST": value,
+                           "salesTaxApplicable": value * 0.18,
+                           "furtherTax": 0}]}
+
+    # ---- R1: s.23 proviso warning ----
+    def test_warning_above_threshold_without_cnic(self):
+        from .validators import invoice_warnings
+        w = invoice_warnings(self._payload(100000))
+        self.assertEqual(len(w), 1)
+        self.assertEqual(w[0]["code"], "W-S23")
+        self.assertIn("Section 23", w[0]["warning"])
+
+    def test_no_warning_below_threshold(self):
+        from .validators import invoice_warnings
+        self.assertEqual(invoice_warnings(self._payload(50000)), [])
+
+    def test_no_warning_when_cnic_given_or_registered(self):
+        from .validators import invoice_warnings
+        self.assertEqual(
+            invoice_warnings(self._payload(200000,
+                                           buyer_id="4210112345671")), [])
+        self.assertEqual(
+            invoice_warnings(self._payload(200000, reg="Registered")), [])
+
+    def test_warning_is_non_blocking(self):
+        # Warning ke bawajood validate_invoice ERROR list mein kuch add na kare
+        from .validators import validate_invoice
+        p = self._payload(100000)
+        codes = {e["errorCode"] for e in validate_invoice(p)}
+        self.assertNotIn("W-S23", codes)
+
+    def test_threshold_configurable(self):
+        from django.test import override_settings
+        from .validators import invoice_warnings
+        with override_settings(UNREG_CNIC_THRESHOLD=500000):
+            self.assertEqual(invoice_warnings(self._payload(100000)), [])
+
+    # ---- R3: daily closing ----
+    def _mk_inv(self, d, status="valid", value=1000, fbr=None):
+        from django.utils import timezone
+        return Invoice.objects.create(
+            owner=self.user, seller_profile=self.profile,
+            invoice_type="Sale Invoice", invoice_date=d,
+            buyer_business_name="B", buyer_registration_type="Registered",
+            total_value=value, total_sales_tax=value * 0.18,
+            invoice_total=value * 1.18, status=status,
+            fbr_invoice_number=fbr, submitted_at=timezone.now())
+
+    def test_daily_closing_created_and_immutable(self):
+        from datetime import date, timedelta
+        from .services import ClosingService
+        from .models import DailyClosing
+        y = date.today() - timedelta(days=1)
+        self._mk_inv(y, fbr="1234567890-1")
+        self._mk_inv(y, fbr="1234567890-2", value=500)
+        self._mk_inv(y, status="failed")
+        ClosingService.run_daily(y)
+        c = DailyClosing.objects.get(seller_profile=self.profile, date=y)
+        self.assertEqual(c.invoice_count, 3)
+        self.assertEqual(c.valid_count, 2)
+        self.assertEqual(c.failed_count, 1)
+        self.assertEqual(c.total_value, 1500)
+        self.assertEqual(c.first_fbr_number, "1234567890-1")
+        self.assertEqual(c.last_fbr_number, "1234567890-2")
+        # Idempotent — doosri run par duplicate/overwrite nahi
+        self._mk_inv(y, fbr="1234567890-3")
+        results = ClosingService.run_daily(y)
+        self.assertIn((self.profile.pk, False), results)
+        self.assertEqual(DailyClosing.objects.filter(date=y).count(), 1)
+        c.refresh_from_db()
+        self.assertEqual(c.invoice_count, 3)     # unchanged snapshot
+
+    def test_daily_closing_command(self):
+        from django.core.management import call_command
+        from io import StringIO
+        out = StringIO()
+        call_command("daily_closing", stdout=out)
+        self.assertIn("closings created=", out.getvalue())
+
+    def test_closings_render_on_reports(self):
+        from datetime import date, timedelta
+        from .services import ClosingService
+        y = date.today() - timedelta(days=1)
+        self._mk_inv(y, fbr="1234567890-9")
+        ClosingService.run_daily(y)
+        r = self.client.get("/digital-invoicing/reports/")
+        self.assertContains(r, "Daily closings")
+        self.assertContains(r, "1234567890-9")
+
+    # ---- R3: Annex-C CSV ----
+    def test_annex_c_csv(self):
+        from datetime import date
+        inv = self._mk_inv(date.today(), fbr="1234567890-4")
+        InvoiceItem.objects.create(
+            invoice=inv, hs_code="0101.2100", product_description="A",
+            sale_type="Goods at standard rate (default)", quantity=1,
+            value_excl_st=1000, sales_tax=180, rate="18%")
+        period = date.today().strftime("%Y-%m")
+        r = self.client.get(f"/digital-invoicing/reports/annex-c.csv?period={period}")
+        self.assertEqual(r.status_code, 200)
+        body = r.content.decode("utf-8")
+        self.assertIn("Sale Type", body)
+        self.assertIn("Goods at standard rate (default)", body)
+
+
+class TemplateInjectionRegressionTests(TestCase):
+    """Duplicate-endblock injection bug (3rd occurrence) — permanent guard.
+    Har major page ka <title> aur sidebar HTML-leak se pak hona chahiye."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user("tguard", password="x")
+        SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K")
+        self.client.login(username="tguard", password="x")
+
+    def test_no_html_leak_in_title_or_nav(self):
+        import re
+        pages = ["dashboard", "invoices", "reports", "products", "buyers",
+                 "activity", "account", "help", "create"]
+        for name in pages:
+            r = self.client.get(f"/digital-invoicing/{name}/")
+            self.assertEqual(r.status_code, 200, name)
+            body = r.content.decode()
+            title = re.search(r"<title>(.*?)</title>", body, re.S)
+            self.assertIsNotNone(title, name)
+            self.assertNotIn("<div", title.group(1), f"{name}: HTML in <title>")
+            self.assertNotIn("class=", title.group(1), name)
+
+    def test_reports_closings_card_exactly_once(self):
+        r = self.client.get("/digital-invoicing/reports/")
+        self.assertEqual(r.content.decode().count("Daily closings"), 1)

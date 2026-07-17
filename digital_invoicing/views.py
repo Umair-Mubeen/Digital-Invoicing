@@ -97,6 +97,9 @@ def validate_invoice(request):
         if e.simple:
             return JsonResponse({"ok": False, "error": e.message}, status=400)
         return JsonResponse(e.fbr_shaped())
+    # R1 — non-blocking legal warnings (s.23 proviso etc.)
+    from .validators import invoice_warnings
+    body["warnings"] = invoice_warnings(payload)
     log_event(request, "invoice_validated" if body["ok"] else "validation_failed",
               invoice_type=payload.get("invoiceType", ""))
     return JsonResponse(body)
@@ -678,6 +681,30 @@ def logout_view(request):
 
 
 
+@login_required
+def annex_c_csv(request):
+    """R3 — IRIS-friendly Annexure-C style CSV from sale_type_report."""
+    import csv as _csv
+    from django.http import HttpResponse
+    from .services import ReportService
+    from datetime import date
+    period = request.GET.get("period") or date.today().strftime("%Y-%m")
+    business_id = request.GET.get("biz") or None
+    rows = ReportService(request.user).sale_type_report(business_id, period)
+    resp = HttpResponse(content_type="text/csv; charset=utf-8")
+    resp["Content-Disposition"] = (
+        f'attachment; filename="annex-c-{period}.csv"')
+    resp.write("\ufeff")
+    w = _csv.writer(resp)
+    w.writerow(["Sale Type", "Rate", "No. of Items", "Value of Supplies "
+                "(excl. ST)", "Sales Tax", "Further Tax"])
+    for r in rows:
+        w.writerow([r["sale_type"], r["rate"], r["n"], r["value"] or 0,
+                    r["st"] or 0, r["ft"] or 0])
+    log_event(request, "invoices_exported", report="annex_c", period=period)
+    return resp
+
+
 def _period_nav(period):
     """Reports ke liye prev/next month strings (typing kam — 1 click)."""
     from datetime import date
@@ -720,6 +747,9 @@ def reports(request):
         "statuses": svc.status_report(business_id, period),
         "by_sale_type": svc.sale_type_report(business_id, period),
         "period_nav": _period_nav(period),
+        "closings": __import__("digital_invoicing.models",
+                               fromlist=["DailyClosing"]).DailyClosing.objects
+                    .filter(seller_profile__user=request.user)[:14],
         "input_tax": input_tax,
         "net_payable": float(summary["totals"]["st"] or 0)
                        - float(input_tax["input_tax"] or 0),

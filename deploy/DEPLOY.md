@@ -73,3 +73,11 @@ auto-retry nahi hota (duplicate risk); IRIS par verify kar ke manual resubmit.
 ```cron
 */5 * * * *  cd /srv/taxbuddy-invoicing && ./venv/bin/python manage.py retry_pending_invoices >> logs/retry.log 2>&1
 ```
+
+## Daily Closing (Rule 150R — R3)
+Har raat pichhle din ki immutable closing snapshot (counts, totals,
+first/last FBR number) per business. Reports page par dikhti hai.
+
+```cron
+10 0 * * *  cd /srv/taxbuddy-invoicing && ./venv/bin/python manage.py daily_closing >> logs/closing.log 2>&1
+```

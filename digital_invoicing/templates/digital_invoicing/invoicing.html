@@ -230,6 +230,11 @@
         <div id="errPanelBody" style="display:flex;flex-direction:column;gap:8px"></div>
       </div>
 
+      <div id="warnPanel" role="status" style="display:none;background:#fdf6e1;border:1px solid #ecd9a0;border-radius:12px;padding:12px 16px;margin-bottom:14px">
+        <b style="color:#8a6508;font-size:13px">⚠ Legal notice (invoice will still submit)</b>
+        <div id="warnPanelBody" style="font-size:12.5px;line-height:1.55;margin-top:6px;color:#6b5106"></div>
+      </div>
+
       <div class="actions">
         <span id="draftNote" class="hint" style="flex:1;align-self:center;display:none">Draft saved locally</span>
         <button type="button" class="btn btn-ghost" onclick="clearDraft(true)" title="Clear form (Alt+N)">Clear</button>
@@ -760,12 +765,18 @@ async function validateInvoice(btn){
       headers:{'Content-Type':'application/json','X-CSRFToken':getCookie('csrftoken')},
       body: JSON.stringify(p)});
     const d = await r.json();
-    if(d.ok){ alert('✓ FBR validation PASSED — invoice is ready to submit.'); }
+    if(d.ok){
+      showWarnings(d.warnings);
+      hideErrPanel();
+      alert('✓ FBR validation PASSED — invoice is ready to submit.'
+            + (d.warnings && d.warnings.length ? '\n\nNote: legal notice below — read before submitting.' : ''));
+    }
     else{
       const st=((d.validationResponse&&d.validationResponse.invoiceStatuses)||[])
         .filter(s=>s.errorCode||s.error);
       showErrPanel(st.length?st:[{errorCode:'', error:(d.error||(d.validationResponse&&d.validationResponse.error)||'Validation failed')}],
                    'FBR validation failed — fix the errors and try again');
+      showWarnings(d.warnings);
     }
   }catch(e){ alert('Network error'); }
   btn.disabled=false; btn.textContent=t0;
@@ -791,6 +802,12 @@ const ERR_HELP = {
   "0104": "Sales tax must equal value × rate.",
   "0105": "Sales tax must equal quantity × fixed rate.",
 };
+function showWarnings(warns){
+  const p=document.getElementById('warnPanel'), b=document.getElementById('warnPanelBody');
+  if(!warns || !warns.length){ p.style.display='none'; return; }
+  b.innerHTML = warns.map(w=>`<div>${(w.warning||'').replace(/</g,'&lt;')}</div>`).join('');
+  p.style.display='';
+}
 function showErrPanel(statuses, title){
   const p=document.getElementById('errPanel'), b=document.getElementById('errPanelBody');
   document.getElementById('errPanelTitle').textContent = title || 'Validation errors';

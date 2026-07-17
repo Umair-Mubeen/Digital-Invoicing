@@ -77,7 +77,11 @@ new Chart(document.getElementById('chTax'), {
 
 <div class="card" style="margin-bottom:20px">
   <h3 style="margin-top:0">Sale type breakdown — {{ period_nav.label }}</h3>
-  <div class="hint" style="margin-bottom:8px">For the FBR sales tax return (Annex-C) — cancelled items excluded</div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:10px;flex-wrap:wrap">
+    <div class="hint">For the FBR sales tax return (Annex-C) — cancelled items excluded</div>
+    <a class="btn-g no-print" href="{% url 'digital_invoicing:annex_c_csv' %}?period={{ period }}{% if biz %}&biz={{ biz }}{% endif %}"
+       style="background:#fff;color:var(--navy);border:1px solid var(--line);text-decoration:none;padding:6px 12px;font-size:12px">⬇ Annex-C CSV</a>
+  </div>
   <table style="width:100%;border-collapse:collapse">
     <tr style="text-align:left;color:var(--muted)">
       <th style="padding:8px 6px">Sale Type</th><th>Rate</th><th>Items</th>
@@ -146,6 +150,26 @@ new Chart(document.getElementById('chTax'), {
         <td class="num">Rs {{ r.value|floatformat:"0g" }}</td></tr>
     {% empty %}
       <tr><td colspan="3" style="padding:14px 6px;color:var(--muted)">No data.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+<div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">Daily closings — Rule 150R</h3>
+  <div class="hint" style="margin-bottom:8px">Immutable day-end snapshots (last 14). Cron runs nightly; backfill: <span class="num">manage.py daily_closing --date YYYY-MM-DD</span></div>
+  <table style="width:100%;border-collapse:collapse">
+    <tr style="text-align:left;color:var(--muted)">
+      <th style="padding:8px 6px">Date</th><th>Invoices</th><th>Valid</th>
+      <th class="num">Value</th><th class="num">Sales Tax</th>
+      <th>First — Last FBR No.</th></tr>
+    {% for c in closings %}
+      <tr style="border-top:1px solid var(--line)">
+        <td style="padding:8px 6px">{{ c.date|date:"d M Y" }}</td>
+        <td>{{ c.invoice_count }}</td><td>{{ c.valid_count }}</td>
+        <td class="num">Rs {{ c.total_value|floatformat:"0g" }}</td>
+        <td class="num">Rs {{ c.total_sales_tax|floatformat:"0g" }}</td>
+        <td class="num" style="font-size:11.5px">{{ c.first_fbr_number|default:"—" }}{% if c.last_fbr_number and c.last_fbr_number != c.first_fbr_number %} — {{ c.last_fbr_number }}{% endif %}</td></tr>
+    {% empty %}
+      <tr><td colspan="6" style="padding:14px 6px;color:var(--muted)">No closings yet — the nightly cron will create them, or run manage.py daily_closing.</td></tr>
     {% endfor %}
   </table>
 </div>

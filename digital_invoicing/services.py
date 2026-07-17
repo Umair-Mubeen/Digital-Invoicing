@@ -1082,3 +1082,50 @@ class ATLReportService:
                 except Exception:
                     failed += 1
         return done, failed
+
+
+# --------------------------------------------------------------------------
+class ClosingService:
+    """R3 (Rule 150R) — daily closing snapshots. Idempotent: pehle se bani
+    closing dobara nahi banti (immutable record)."""
+
+    @staticmethod
+    def run_daily(on_date=None):
+        """Har business ki given date (default: KAL) ki closing banao.
+        Returns [(profile_id, created_bool)]."""
+        from datetime import date as _date, timedelta
+        from django.db.models import Sum, Count, Q
+        from .models import DailyClosing, SellerProfile
+        on_date = on_date or (_date.today() - timedelta(days=1))
+        results = []
+        for profile in SellerProfile.objects.all():
+            if DailyClosing.objects.filter(seller_profile=profile,
+                                           date=on_date).exists():
+                results.append((profile.pk, False))
+                continue
+            day_qs = Invoice.objects.filter(seller_profile=profile,
+                                            invoice_date=on_date)
+            valid_qs = day_qs.filter(status__in=(
+                "valid", "edited", "partially_edited", "partially_cancelled",
+                "partially_edited_cancelled"))
+            agg = valid_qs.aggregate(
+                v=Sum("total_value"), st=Sum("total_sales_tax"),
+                ft=Sum("total_further_tax"))
+            fbr_nums = list(valid_qs.exclude(fbr_invoice_number__isnull=True)
+                            .exclude(fbr_invoice_number="")
+                            .order_by("submitted_at")
+                            .values_list("fbr_invoice_number", flat=True))
+            DailyClosing.objects.create(
+                seller_profile=profile, date=on_date,
+                invoice_count=day_qs.count(),
+                valid_count=valid_qs.count(),
+                failed_count=day_qs.filter(status="failed").count(),
+                cancelled_count=day_qs.filter(status="cancelled").count(),
+                total_value=agg["v"] or 0,
+                total_sales_tax=agg["st"] or 0,
+                total_further_tax=agg["ft"] or 0,
+                first_fbr_number=fbr_nums[0] if fbr_nums else "",
+                last_fbr_number=fbr_nums[-1] if fbr_nums else "",
+            )
+            results.append((profile.pk, True))
+        return results

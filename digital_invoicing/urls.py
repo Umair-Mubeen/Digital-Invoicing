@@ -23,6 +23,7 @@ urlpatterns = [
     path("reports/", views.reports, name="reports"),
     path("invoices.csv", views.invoice_list_csv, name="list_csv"),
     path("reports/sales-register.csv", views.sales_register_csv, name="sales_register_csv"),
+    path("reports/annex-c.csv", views.annex_c_csv, name="annex_c_csv"),
     path("create/", views.create_invoice, name="create"),
     path("profile/", views.seller_profile, name="profile"),
     path("account/", views.account, name="account"),

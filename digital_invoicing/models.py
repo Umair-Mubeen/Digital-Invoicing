@@ -271,6 +271,36 @@ class SellerProfile(models.Model):
         return f"{self.business_name} ({self.ntn_cnic})"
 
 
+class DailyClosing(models.Model):
+    """R3 (Rule 150R) — immutable day-end closing snapshot per business.
+    Ek dafa ban gayi to update nahi hoti (unique per business+date);
+    weekly/monthly rollups in rows se derive hote hain."""
+    seller_profile = models.ForeignKey("SellerProfile",
+                                       on_delete=models.CASCADE,
+                                       related_name="daily_closings")
+    date = models.DateField()
+    invoice_count = models.PositiveIntegerField(default=0)
+    valid_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
+    cancelled_count = models.PositiveIntegerField(default=0)
+    total_value = models.DecimalField(max_digits=16, decimal_places=2,
+                                      default=0)
+    total_sales_tax = models.DecimalField(max_digits=16, decimal_places=2,
+                                          default=0)
+    total_further_tax = models.DecimalField(max_digits=16, decimal_places=2,
+                                            default=0)
+    first_fbr_number = models.CharField(max_length=60, blank=True, default="")
+    last_fbr_number = models.CharField(max_length=60, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("seller_profile", "date")]
+        ordering = ["-date"]
+
+    def __str__(self):
+        return f"{self.seller_profile_id} · {self.date}"
+
+
 class AuditLog(models.Model):
     """Har ahem event ka record — kaun, kya, kab, kis IP se. Audit trail."""
     ACTIONS = [
