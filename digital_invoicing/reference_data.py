@@ -33,7 +33,7 @@ REAL_ENDPOINTS = {
     "sroitems":    "https://gw.fbr.gov.pk/pdi/v1/sroitemcode",
     "transtypes":  "https://gw.fbr.gov.pk/pdi/v1/transtypecode",
     "uom":         "https://gw.fbr.gov.pk/pdi/v1/uom",
-    "sro_schedule":"https://gw.fbr.gov.pk/pdi/v2/SroSchedule",
+    "sro_schedule":"https://gw.fbr.gov.pk/pdi/v1/SroSchedule",
     "rate":        "https://gw.fbr.gov.pk/pdi/v2/SaleTypeToRate",
     "hs_uom":      "https://gw.fbr.gov.pk/pdi/v2/HS_UOM",
     "sro_items_v2":"https://gw.fbr.gov.pk/pdi/v2/SROItem",
@@ -280,16 +280,18 @@ class MockReferenceClient:
 
     def statl_check(self, reg_no, date=None):
         """Mock STATL: 13-digit CNICs ending in even digit = Active (arbitrary
-        but deterministic, so tests are repeatable)."""
+        but deterministic, so tests are repeatable). Shape matches the
+        normalized RealReferenceClient.statl_check() output."""
         active = bool(reg_no) and reg_no[-1].isdigit() and int(reg_no[-1]) % 2 == 0
-        return {"regno": reg_no, "statl_status": "Active" if active else "In-Active"}
+        return {"status": "Active" if active else "In-Active"}
 
     def reg_type(self, reg_no):
         """Mock registration-type check (powers error 0053 prevention):
-        7-digit NTN -> Registered; 13-digit CNIC -> Unregistered."""
+        7-digit NTN -> Registered; 13-digit CNIC -> Unregistered. Shape
+        matches the normalized RealReferenceClient.reg_type() output."""
         if reg_no and len(reg_no) == 7 and reg_no.isdigit():
-            return {"REGISTRATION_NO": reg_no, "REG_TYPE": "Registered"}
-        return {"REGISTRATION_NO": reg_no, "REG_TYPE": "Unregistered"}
+            return {"registration_no": reg_no, "registration_type": "Registered"}
+        return {"registration_no": reg_no, "registration_type": "Unregistered"}
 
 
 # --------------------------------------------------------------- Real client
@@ -372,12 +374,27 @@ class RealReferenceClient:
                 {"srO_ITEM_ID": 17854, "srO_ITEM_DESC": "51"}]
 
     def statl_check(self, reg_no, date=None):
-        return self._post(REAL_ENDPOINTS["statl"],
-                          {"regno": reg_no, "date": date or ""})
+        """Normalizes FBR's STATL response (Tech Spec §5.11 — {"status
+        code"/"statuscode": ..., "status": "Active"/"In-Active"}) to the
+        same {"status": ...} shape MockReferenceClient returns."""
+        raw = self._post(REAL_ENDPOINTS["statl"],
+                         {"regno": reg_no, "date": date or ""})
+        status = str(raw.get("status", "")).strip()
+        return {"status": "Active" if status.lower() == "active" else "In-Active",
+                "raw": raw}
 
     def reg_type(self, reg_no):
-        return self._post(REAL_ENDPOINTS["reg_type"],
-                          {"Registration_No": reg_no})
+        """Normalizes FBR's Get_Reg_Type response (Tech Spec §5.12 —
+        REGISTRATION_NO/REGISTRATION_TYPE, case varies e.g. "unregistered")
+        to the same {"registration_no", "registration_type"} shape
+        MockReferenceClient returns."""
+        raw = self._post(REAL_ENDPOINTS["reg_type"],
+                         {"Registration_No": reg_no})
+        rtype = str(raw.get("REGISTRATION_TYPE", "")).strip()
+        return {"registration_no": raw.get("REGISTRATION_NO", reg_no),
+                "registration_type": "Registered" if rtype.lower() == "registered"
+                                    else "Unregistered",
+                "raw": raw}
 
 
 # --------------------------------------------------------------- Factory

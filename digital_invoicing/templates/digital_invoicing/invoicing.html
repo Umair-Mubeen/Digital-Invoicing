@@ -561,7 +561,7 @@ async function verifyBuyer(){
   try{
     const r=await fetch(REF_BUYER+"?reg_no="+encodeURIComponent(reg),{credentials:"same-origin"});
     const d=await r.json();
-    const type=d.registration.REG_TYPE, statl=d.statl.statl_status;
+    const type=d.registration.registration_type, statl=d.statl.status;
     document.getElementById('buyerRegistrationType').value=type;
     recalc();
     badge.textContent=`✓ ${type} · STATL ${statl}`;

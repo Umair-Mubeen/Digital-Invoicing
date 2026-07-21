@@ -161,7 +161,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 
 
 # ---- Login flow ----
-LOGIN_URL = "/admin/login/"
+LOGIN_URL = "/digital-invoicing/login/"
 LOGIN_REDIRECT_URL = "/digital-invoicing/create/"
 
 # ---- FBR Digital Invoicing (PRAL Technical Spec v1.12) ----

@@ -1060,7 +1060,7 @@ class ATLReportService:
         y, m = self._ym(period)
         result = get_reference_client().statl_check(
             reg_no, date=f"{y:04d}-{m:02d}-01")
-        raw = (result.get("statl_status") or result.get("status") or "")
+        raw = result.get("status", "")
         status = "Active" if "in" not in raw.lower().replace("-", "") else "Inactive"
         # "In-Active"/"Inactive" -> Inactive; "Active" -> Active
         if raw.lower().replace("-", "").startswith("inactive"):

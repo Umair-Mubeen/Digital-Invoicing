@@ -9,7 +9,7 @@ Each check returns {"errorCode": "00xx", "error": "..."} matching FBR's guide.
 Returns a list (empty = valid).
 
 Coverage (Error Message Guide — Sales, all 58 codes accounted for):
-  Local (mock = live):  0002 0003 0007 0008 0010 0012 0013 0018 0019(format)
+  Local (mock = live):  0002 0003 0007 0008 0009 0010 0012 0013 0018 0019(format)
     0020 0021 0022 0026 0027 0028 0034 0035 0042 0043 0044 0046 0050 0058
     0057 0060 0061 0062 0067 0073 0074 0077 0078 0079 0090 0091 0097 0098
     0100(reg-type) 0102 0103 0104 0105 0108 0113 0300 0302
@@ -101,6 +101,10 @@ def validate_invoice(p: dict) -> list:
         errors.append(_err("0010", "Buyer Name is mandatory"))
 
     reg_type = p.get("buyerRegistrationType", "")
+    # buyerNTNCNIC: "Required (Optional in case of Unregistered)" — Tech Spec
+    # v1.12 §4.1.2 field table. Optional only when buyer is Unregistered.
+    if reg_type == "Registered" and not buyer_reg:
+        errors.append(_err("0009", "Provide Buyer registration No."))
     if not reg_type:
         errors.append(_err("0012", "Provided buyer registration type is not valid"))
     elif reg_type not in VALID_REG_TYPES:
