@@ -561,10 +561,11 @@ async function verifyBuyer(){
   try{
     const r=await fetch(REF_BUYER+"?reg_no="+encodeURIComponent(reg),{credentials:"same-origin"});
     const d=await r.json();
-    const type=d.registration.registration_type, statl=d.statl.status;
-    document.getElementById('buyerRegistrationType').value=type;
+    const type=(d.registration.REGISTRATION_TYPE||''), statl=d.statl.status;
+    const isReg = type.toLowerCase()==='registered';
+    if(type){ document.getElementById('buyerRegistrationType').value = isReg ? 'Registered' : 'Unregistered'; }
     recalc();
-    badge.textContent=`✓ ${type} · STATL ${statl}`;
+    badge.textContent=`✓ ${isReg?'Registered':'Unregistered'} · STATL ${statl}`;
     badge.className = statl==='Active' ? 'badge-ok' : 'badge-warn';
   }catch(e){ badge.textContent='✗ could not verify'; badge.className='badge-err'; }
 }

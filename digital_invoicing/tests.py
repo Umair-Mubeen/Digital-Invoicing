@@ -2456,3 +2456,231 @@ class TemplateInjectionRegressionTests(TestCase):
     def test_reports_closings_card_exactly_once(self):
         r = self.client.get("/digital-invoicing/reports/")
         self.assertEqual(r.content.decode().count("Daily closings"), 1)
+
+
+class ExternalReviewFixTests(TestCase):
+    """3rd-party doc cross-check findings — field-shape, endpoint version,
+    error 0009."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user("extrev", password="x")
+        SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K")
+        self.client.login(username="extrev", password="x")
+
+    def test_check_buyer_returns_real_api_field_names(self):
+        """Frontend REGISTRATION_TYPE / status parhta hai — dono modes mein
+        yehi shape aani chahiye (production-parity)."""
+        r = self.client.get(
+            "/digital-invoicing/reference/check-buyer/?reg_no=1234567")
+        d = r.json()
+        self.assertIn("REGISTRATION_TYPE", d["registration"])
+        self.assertIn("status", d["statl"])
+        self.assertNotIn("REG_TYPE", d["registration"])
+        self.assertNotIn("statl_status", d["statl"])
+
+    def test_mock_client_emits_real_shapes(self):
+        from .reference_data import MockReferenceClient
+        c = MockReferenceClient()
+        reg = c.reg_type("1234567")
+        self.assertIn("REGISTRATION_TYPE", reg)
+        self.assertIn("statuscode", reg)
+        st = c.statl_check("1234567")
+        self.assertIn("status", st)
+
+    def test_sro_schedule_endpoint_is_v1(self):
+        """Tech Doc §5.7: pdi/v1/SroSchedule (baqi v2 hain — sirf ye v1)."""
+        from . import reference_data as rd
+        src = open(rd.__file__.replace(".pyc", ".py")).read()
+        self.assertIn("pdi/v1/SroSchedule", src)
+        self.assertNotIn("pdi/v2/SroSchedule", src)
+
+    def test_error_0009_registered_buyer_blank_ntn(self):
+        from .validators import validate_invoice
+        p = {"invoiceType": "Sale Invoice", "invoiceDate": "2026-07-01",
+             "buyerRegistrationType": "Registered", "buyerNTNCNIC": "",
+             "items": []}
+        codes = {e["errorCode"] for e in validate_invoice(p)}
+        self.assertIn("0009", codes)
+
+    def test_no_0009_for_unregistered_blank(self):
+        from .validators import validate_invoice
+        p = {"invoiceType": "Sale Invoice", "invoiceDate": "2026-07-01",
+             "buyerRegistrationType": "Unregistered", "buyerNTNCNIC": "",
+             "items": []}
+        codes = {e["errorCode"] for e in validate_invoice(p)}
+        self.assertNotIn("0009", codes)
+
+
+class ScenarioEligibilityTests(TestCase):
+    """IRIS Activity×Sector eligibility (Tech Doc p.47-51) feature."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user("elig", password="x")
+        self.p = SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K",
+            business_activity="Importer,Wholesaler,Retailer",
+            business_sector="Wholesale / Retails")
+        self.client.login(username="elig", password="x")
+
+    def test_doc_rows_verbatim(self):
+        from .scenario_eligibility import ELIGIBILITY
+        # Row 28: Importer × Wholesale/Retails = base11 + dist4 (15)
+        self.assertEqual(len(ELIGIBILITY[("Importer", "Wholesale / Retails")]), 15)
+        # Row 88: Retailer × Wholesale/Retails = sirf 4
+        self.assertEqual(set(ELIGIBILITY[("Retailer", "Wholesale / Retails")]),
+                         {"SN026", "SN027", "SN028", "SN008"})
+        # Row 2: Manufacturer × Steel = sirf 3 (base nahi!)
+        self.assertEqual(set(ELIGIBILITY[("Manufacturer", "Steel")]),
+                         {"SN003", "SN004", "SN011"})
+        # Row 99: Service Provider × Services = sirf 2
+        self.assertEqual(set(ELIGIBILITY[("Service Provider", "Services")]),
+                         {"SN018", "SN019"})
+
+    def test_union_like_iris(self):
+        from .scenario_eligibility import eligible_scenarios
+        got = eligible_scenarios(["Importer", "Wholesaler", "Retailer"],
+                                 ["Wholesale / Retails"])
+        # Union = Importer row ke 15 (baqi subsets)
+        self.assertEqual(len(got), 15)
+        self.assertIn("SN008", got)
+        self.assertIn("SN024", got)
+
+    def test_profile_csv_parsing(self):
+        from .scenario_eligibility import eligible_for_profile
+        self.assertEqual(len(eligible_for_profile(self.p)), 15)
+        self.p.business_activity = ""
+        self.assertEqual(eligible_for_profile(self.p), [])
+
+    def test_profile_page_saves_and_shows(self):
+        r = self.client.post("/digital-invoicing/profile/", {
+            "edit_id": self.p.pk, "ntn_cnic": "1234567",
+            "business_name": "S", "province": "Sindh", "address": "K",
+            "fbr_token": "", "use_sandbox": "on",
+            "business_activity": ["Retailer"],
+            "business_sector": ["FMCG"]})
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.business_activity, "Retailer")
+        self.assertEqual(self.p.business_sector, "FMCG")
+        r = self.client.get("/digital-invoicing/profile/")
+        self.assertContains(r, "SN026")          # chips render
+        self.assertContains(r, "IRIS Business Nature")
+
+    def test_runner_defaults_to_eligible(self):
+        from django.core.management import call_command
+        from io import StringIO
+        from .models import TaxScenario
+        out = StringIO()
+        call_command("run_sandbox_scenarios", user="elig",
+                     allow_mock=True, stdout=out)
+        text = out.getvalue()
+        self.assertIn("IRIS-eligible scenarios", text)
+        self.assertIn("15", text)
+
+
+class HSCodeSyncTests(TestCase):
+    """sync_hs_codes — official-list caching, curated-row protection."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user("hssync", password="x")
+        SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K")
+
+    def test_blocks_mock_without_flag(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        with self.assertRaises(CommandError) as cm:
+            call_command("sync_hs_codes", user="hssync")
+        self.assertIn("MOCK", str(cm.exception))
+
+    def test_sync_creates_and_protects_curated(self):
+        from django.core.management import call_command
+        from io import StringIO
+        from .models import HSCode
+        # Curated row pehle se (aapki tax knowledge)
+        HSCode.objects.create(hs_code="1701.9910",
+                              description="MY CURATED SUGAR NOTE",
+                              schedule_hint="3rd Schedule",
+                              auto_synced=False)
+        out = StringIO()
+        call_command("sync_hs_codes", user="hssync", allow_mock=True,
+                     stdout=out)
+        text = out.getvalue()
+        self.assertIn("new", text)
+        # Curated untouched
+        row = HSCode.objects.get(hs_code="1701.9910")
+        self.assertEqual(row.description, "MY CURATED SUGAR NOTE")
+        self.assertEqual(row.schedule_hint, "3rd Schedule")
+        # Naye codes auto_synced
+        self.assertTrue(HSCode.objects.filter(auto_synced=True).exists())
+
+    def test_resync_idempotent(self):
+        from django.core.management import call_command
+        from io import StringIO
+        from .models import HSCode
+        call_command("sync_hs_codes", user="hssync", allow_mock=True,
+                     stdout=StringIO())
+        n1 = HSCode.objects.count()
+        call_command("sync_hs_codes", user="hssync", allow_mock=True,
+                     stdout=StringIO())
+        self.assertEqual(HSCode.objects.count(), n1)   # koi duplicate nahi
+
+    def test_autocomplete_uses_synced_rows(self):
+        from django.core.management import call_command
+        from io import StringIO
+        call_command("sync_hs_codes", user="hssync", allow_mock=True,
+                     stdout=StringIO())
+        self.client.login(username="hssync", password="x")
+        r = self.client.get("/digital-invoicing/reference/hscodes/?q=sugar")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertTrue(any("1701" in row["hS_CODE"] for row in body["data"]))
+
+
+class ScenariosPageTests(TestCase):
+    """Scenarios detail listing page."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user("scnpg", password="x")
+        self.p = SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K",
+            business_activity="Retailer",
+            business_sector="Wholesale / Retails")   # eligible = 4
+        self.client.login(username="scnpg", password="x")
+
+    def test_page_lists_all_28_with_details(self):
+        r = self.client.get("/digital-invoicing/scenarios/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "SN001")
+        self.assertContains(r, "SN028")
+        self.assertContains(r, "3rd Schedule Goods")       # sale type col
+        self.assertContains(r, "4 eligible for S")
+
+    def test_eligible_marking(self):
+        r = self.client.get("/digital-invoicing/scenarios/")
+        body = r.content.decode()
+        # SN026 required, SN001 not (Retailer × W/R = sirf dist4)
+        self.assertContains(r, "Required")
+        self.assertContains(r, "Not required")
+
+    def test_eligible_only_filter(self):
+        r = self.client.get("/digital-invoicing/scenarios/?eligible=1")
+        self.assertContains(r, "SN026")
+        self.assertNotContains(r, "SN021")     # base scenario — not eligible
+
+    def test_search_filter(self):
+        r = self.client.get("/digital-invoicing/scenarios/?q=cement")
+        self.assertContains(r, "Cement")
+        self.assertNotContains(r, "SN001<")
+
+    def test_sidebar_link_present(self):
+        r = self.client.get("/digital-invoicing/dashboard/")
+        self.assertContains(r, 'href="/digital-invoicing/scenarios/"')

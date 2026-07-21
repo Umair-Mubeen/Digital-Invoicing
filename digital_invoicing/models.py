@@ -246,6 +246,12 @@ class SellerProfile(models.Model):
                                  help_text="PRAL se mila Bearer token (5-saal)")
     use_sandbox = models.BooleanField(default=True,
                                       help_text="ON = sandbox/testing; OFF = production")
+    # IRIS enrollment ke mutabiq (Tech Doc p.47-51) — eligible scenarios
+    # inhi se compute hote hain. CSV mein multiple selections.
+    business_activity = models.CharField(max_length=200, blank=True,
+                                         default="")
+    business_sector = models.CharField(max_length=200, blank=True,
+                                       default="")
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
@@ -368,6 +374,9 @@ class HSCode(models.Model):
     note = models.CharField(max_length=255, blank=True,
                             help_text="Practitioner note / VERIFY flag")
     is_active = models.BooleanField(default=True)
+    # sync_hs_codes se aya row (curated nahi) — re-sync sirf inki
+    # description update karta hai; curated tax-knowledge rows untouched
+    auto_synced = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

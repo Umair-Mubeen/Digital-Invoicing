@@ -81,3 +81,32 @@ first/last FBR number) per business. Reports page par dikhti hai.
 ```cron
 10 0 * * *  cd /srv/taxbuddy-invoicing && ./venv/bin/python manage.py daily_closing >> logs/closing.log 2>&1
 ```
+
+## 9. Rollback (har release se pehle parh lein)
+Release kharab nikle to 10 minute mein wapas:
+```bash
+# 1) Pichhla code (releases/ mein har deploy ki copy rakhein — section 7)
+cd /srv/taxbuddy-invoicing
+ln -sfn releases/<PICHHLA-TAG> current && sudo systemctl restart gunicorn
+
+# 2) Agar naye release ne migrations chalayi thin: DB dump wapas karein
+#    (section 6 ka raat wala dump — migrations reverse karne ki koshish NA karein)
+mysql -u taxbuddy -p taxbuddy_db < /srv/backups/db-<DATE>.sql
+```
+Rule: **code + DB hamesha ek hi release ke pair mein wapas jate hain.**
+Deploy se pehle manual dump: `mysqldump ... > /srv/backups/pre-deploy-$(date +%F).sql`
+
+## 10. Monitoring (kam se kam itna)
+```cron
+# Cron failures email par (server par mail configured ho)
+MAILTO=umair@example.com
+# Har cron line ke aakhir mein already `>> logs/*.log 2>&1` hai — ye rakhen
+
+# Disk 90% se upar to warning (rozana)
+0 8 * * * df -h / | awk 'NR==2 && $5+0>90 {print "DISK WARNING: "$5}' | mail -s "VPS disk" umair@example.com
+
+# App zinda hai? (har 10 min; down ho to mail)
+*/10 * * * * curl -sf -o /dev/null https://<domain>/digital-invoicing/login/ || echo "SITE DOWN" | mail -s "TaxBuddy DOWN" umair@example.com
+```
+Retry queue ka health khud dashboard par hai (FBR link card → retry depth).
+Backup restore ki **mashq go-live se pehle EK BAAR zaroor** karein (section 6 ka dump ek khali DB mein load kar ke dekhein).

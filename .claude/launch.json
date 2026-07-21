@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "django-dev",
+      "runtimeExecutable": "py",
+      "runtimeArgs": ["-3", "manage.py", "runserver", "127.0.0.1:8010"],
+      "port": 8010
+    }
+  ]
+}

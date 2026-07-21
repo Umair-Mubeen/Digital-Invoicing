@@ -28,6 +28,7 @@ urlpatterns = [
     path("profile/", views.seller_profile, name="profile"),
     path("account/", views.account, name="account"),
     path("help/", views.help_page, name="help"),
+    path("scenarios/", views.scenarios_page, name="scenarios"),
     path("activity/", views.activity, name="activity"),
     path("buyers/", views.buyers, name="buyers"),
     path("products/", views.products, name="products"),

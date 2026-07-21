@@ -1,0 +1,65 @@
+{% extends "digital_invoicing/base_di.html" %}
+{% block na_scenarios %}on{% endblock %}
+{% block di_title_text %}Sandbox Scenarios{% endblock %}
+{% block di_title %}FBR Sandbox Scenarios{% endblock %}
+{% block di_subtitle %}What each scenario tests, and which ones this business must certify{% endblock %}
+
+{% block di_content %}
+<form class="filterbar" method="get">
+  {% if businesses|length > 1 %}
+  <select name="biz" class="fsel" onchange="this.form.submit()">
+    {% for b in businesses %}
+    <option value="{{ b.pk }}" {% if selected and selected.pk == b.pk %}selected{% endif %}>{{ b.business_name }}</option>
+    {% endfor %}
+  </select>
+  {% elif selected %}<input type="hidden" name="biz" value="{{ selected.pk }}">{% endif %}
+  <input name="q" value="{{ q }}" placeholder="🔍 SN code, description or sale type…" class="fsel" style="min-width:260px">
+  <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer">
+    <input type="checkbox" name="eligible" value="1" {% if only_eligible %}checked{% endif %} onchange="this.form.submit()">
+    Eligible only
+  </label>
+  <button class="fbtn" type="submit">Apply</button>
+</form>
+
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px">
+  <span style="background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;box-shadow:var(--shadow)">{{ rows|length }} shown</span>
+  {% if selected %}
+  <span style="background:#eef4fd;border:1px solid #c8dcf5;color:#1d5aa8;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:700">{{ eligible_count }} eligible for {{ selected.business_name }}</span>
+  {% if not selected.business_activity %}
+  <a href="{% url 'digital_invoicing:profile' %}?edit={{ selected.pk }}" style="background:#fdf6e1;border:1px solid #ecd9a0;color:#8a6508;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:700;text-decoration:none">⚠ Set IRIS nature/sector first →</a>
+  {% endif %}{% endif %}
+</div>
+
+<div class="di-card">
+  <table class="list">
+    <thead><tr>
+      <th>Scenario</th><th>Description</th><th>Sale Type</th>
+      <th>Rate</th><th>Buyer</th><th>Certification</th>
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr {% if not r.eligible and selected %}style="opacity:.45"{% endif %}>
+        <td><span class="num" style="font-weight:700;color:var(--navy)">{{ r.code }}</span></td>
+        <td style="font-size:12.5px;max-width:340px">{{ r.description }}</td>
+        <td style="font-size:12px">{{ r.sale_type }}</td>
+        <td class="num" style="font-size:12px">{{ r.rate }}</td>
+        <td style="font-size:12px">{{ r.buyer|default:"—" }}</td>
+        <td>
+          {% if r.eligible %}
+            <span class="pill valid">Required</span>
+          {% elif selected %}
+            <span class="pill" style="background:#eef2f7;color:var(--muted)">Not required</span>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" style="padding:14px 6px;color:var(--muted)">No scenarios match this filter.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="hint" style="margin-top:12px">
+    "Required" = IRIS enrollment (business nature × sector, Tech Doc p.47–51) ke mutabiq is business ki sandbox certification mein shamil.
+    Run: <span class="num">python manage.py run_sandbox_scenarios --user &lt;username&gt;</span> — scope khud eligible list par hota hai.
+  </div>
+</div>
+{% endblock %}

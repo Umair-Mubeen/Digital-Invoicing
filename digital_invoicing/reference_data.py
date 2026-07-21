@@ -232,13 +232,14 @@ class MockReferenceClient:
     def trans_types(self): return self.TRANS_TYPES
     def sro_schedules(self, rate_id=None, date=None): return self.SRO_SCHEDULES
 
-    def hs_codes(self, q=""):
+    def hs_codes(self, q="", limit=25):
         q = (q or "").strip().lower()
         rows = self.HS_CODES
         if q:
             rows = [r for r in rows
                     if q in r["hS_CODE"].lower() or q in r["description"].lower()]
-        return [{"hS_CODE": r["hS_CODE"], "description": r["description"]} for r in rows[:25]]
+        capped = rows if limit is None else rows[:limit]
+        return [{"hS_CODE": r["hS_CODE"], "description": r["description"]} for r in capped]
 
     def hs_uom(self, hs_code):
         for r in self.HS_CODES:
@@ -280,18 +281,21 @@ class MockReferenceClient:
 
     def statl_check(self, reg_no, date=None):
         """Mock STATL: 13-digit CNICs ending in even digit = Active (arbitrary
-        but deterministic, so tests are repeatable). Shape matches the
-        normalized RealReferenceClient.statl_check() output."""
+        but deterministic, so tests are repeatable)."""
         active = bool(reg_no) and reg_no[-1].isdigit() and int(reg_no[-1]) % 2 == 0
-        return {"status": "Active" if active else "In-Active"}
+        # Real API shape (Tech Doc §5.11): {"status code": "01", "status": ...}
+        return {"status code": "01" if active else "02",
+                "status": "Active" if active else "In-Active"}
 
     def reg_type(self, reg_no):
         """Mock registration-type check (powers error 0053 prevention):
-        7-digit NTN -> Registered; 13-digit CNIC -> Unregistered. Shape
-        matches the normalized RealReferenceClient.reg_type() output."""
+        7-digit NTN -> Registered; 13-digit CNIC -> Unregistered."""
         if reg_no and len(reg_no) == 7 and reg_no.isdigit():
-            return {"registration_no": reg_no, "registration_type": "Registered"}
-        return {"registration_no": reg_no, "registration_type": "Unregistered"}
+            # Real API shape (Tech Doc §5.12 Get_Reg_Type)
+            return {"statuscode": "00", "REGISTRATION_NO": reg_no,
+                    "REGISTRATION_TYPE": "Registered"}
+        return {"statuscode": "01", "REGISTRATION_NO": reg_no,
+                "REGISTRATION_TYPE": "Unregistered"}
 
 
 # --------------------------------------------------------------- Real client
@@ -328,14 +332,14 @@ class RealReferenceClient:
         return self._get(REAL_ENDPOINTS["sro_schedule"],
                          {"rate_id": rate_id, "date": date})
 
-    def hs_codes(self, q=""):
+    def hs_codes(self, q="", limit=25):
         rows = self._get(REAL_ENDPOINTS["hscodes"])
         q = (q or "").strip().lower()
         if q:
             rows = [r for r in rows
                     if q in str(r.get("hS_CODE", "")).lower()
                     or q in str(r.get("description", "")).lower()]
-        return rows[:25]
+        return rows if limit is None else rows[:limit]
 
     def hs_uom(self, hs_code):
         return self._get(REAL_ENDPOINTS["hs_uom"],
@@ -374,27 +378,12 @@ class RealReferenceClient:
                 {"srO_ITEM_ID": 17854, "srO_ITEM_DESC": "51"}]
 
     def statl_check(self, reg_no, date=None):
-        """Normalizes FBR's STATL response (Tech Spec §5.11 — {"status
-        code"/"statuscode": ..., "status": "Active"/"In-Active"}) to the
-        same {"status": ...} shape MockReferenceClient returns."""
-        raw = self._post(REAL_ENDPOINTS["statl"],
-                         {"regno": reg_no, "date": date or ""})
-        status = str(raw.get("status", "")).strip()
-        return {"status": "Active" if status.lower() == "active" else "In-Active",
-                "raw": raw}
+        return self._post(REAL_ENDPOINTS["statl"],
+                          {"regno": reg_no, "date": date or ""})
 
     def reg_type(self, reg_no):
-        """Normalizes FBR's Get_Reg_Type response (Tech Spec §5.12 —
-        REGISTRATION_NO/REGISTRATION_TYPE, case varies e.g. "unregistered")
-        to the same {"registration_no", "registration_type"} shape
-        MockReferenceClient returns."""
-        raw = self._post(REAL_ENDPOINTS["reg_type"],
-                         {"Registration_No": reg_no})
-        rtype = str(raw.get("REGISTRATION_TYPE", "")).strip()
-        return {"registration_no": raw.get("REGISTRATION_NO", reg_no),
-                "registration_type": "Registered" if rtype.lower() == "registered"
-                                    else "Unregistered",
-                "raw": raw}
+        return self._post(REAL_ENDPOINTS["reg_type"],
+                          {"Registration_No": reg_no})
 
 
 # --------------------------------------------------------------- Factory

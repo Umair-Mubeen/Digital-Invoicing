@@ -9,7 +9,7 @@ Each check returns {"errorCode": "00xx", "error": "..."} matching FBR's guide.
 Returns a list (empty = valid).
 
 Coverage (Error Message Guide — Sales, all 58 codes accounted for):
-  Local (mock = live):  0002 0003 0007 0008 0009 0010 0012 0013 0018 0019(format)
+  Local (mock = live):  0002 0003 0007 0008 0010 0012 0013 0018 0019(format)
     0020 0021 0022 0026 0027 0028 0034 0035 0042 0043 0044 0046 0050 0058
     0057 0060 0061 0062 0067 0073 0074 0077 0078 0079 0090 0091 0097 0098
     0100(reg-type) 0102 0103 0104 0105 0108 0113 0300 0302
@@ -78,6 +78,10 @@ def _decimals_ok(v, places=2):
 
 
 def validate_invoice(p: dict) -> list:
+    # NOTE (doc conflict): Error Message Guide aur Tech Doc §7 codes 0007 aur
+    # 0071 ke matlab par IKHTILAF rakhte hain. Ye module Error Message Guide
+    # (Sales) ki definitions follow karta hai; pilot certification mein PRAL
+    # se authoritative source confirm karna hai (compliance matrix D5 note).
     """Return a list of FBR-style errors for the given v1.12 payload."""
     errors = []
     inv_type = p.get("invoiceType", "")
@@ -96,15 +100,16 @@ def validate_invoice(p: dict) -> list:
     buyer_reg = p.get("buyerNTNCNIC", "")
     if buyer_reg and not _valid_reg_no(buyer_reg):
         errors.append(_err("0002", "Buyer Registration No. is not in proper format"))
+    # 0009 (Tech Doc §4.1.2): buyerNTNCNIC Required — "Optional in case of
+    # Unregistered" hi exception hai. Registered + blank => real FBR reject.
+    if p.get("buyerRegistrationType", "").strip() == "Registered" \
+            and not (buyer_reg or "").strip():
+        errors.append(_err("0009", "Provide Buyer Registration No."))
 
     if not p.get("buyerBusinessName"):
         errors.append(_err("0010", "Buyer Name is mandatory"))
 
     reg_type = p.get("buyerRegistrationType", "")
-    # buyerNTNCNIC: "Required (Optional in case of Unregistered)" — Tech Spec
-    # v1.12 §4.1.2 field table. Optional only when buyer is Unregistered.
-    if reg_type == "Registered" and not buyer_reg:
-        errors.append(_err("0009", "Provide Buyer registration No."))
     if not reg_type:
         errors.append(_err("0012", "Provided buyer registration type is not valid"))
     elif reg_type not in VALID_REG_TYPES:

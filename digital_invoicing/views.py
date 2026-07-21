@@ -498,9 +498,18 @@ def ref_check_buyer(request):
     if not reg_no:
         return JsonResponse({"error": "reg_no required"}, status=400)
     c = get_reference_client()
+    reg = c.reg_type(reg_no) or {}
+    statl = c.statl_check(reg_no) or {}
+    # Canonical shape — real API (§5.11/§5.12) first, legacy mock fallback
     return JsonResponse({
-        "registration": c.reg_type(reg_no),
-        "statl": c.statl_check(reg_no),
+        "registration": {
+            "REGISTRATION_NO": reg.get("REGISTRATION_NO", reg_no),
+            "REGISTRATION_TYPE": (reg.get("REGISTRATION_TYPE")
+                                  or reg.get("REG_TYPE") or ""),
+        },
+        "statl": {
+            "status": statl.get("status") or statl.get("statl_status") or "",
+        },
     })
 
 
@@ -535,6 +544,10 @@ def seller_profile(request):
             "address": request.POST.get("address", "").strip(),
             "fbr_token": request.POST.get("fbr_token", "").strip(),
             "use_sandbox": request.POST.get("use_sandbox") == "on",
+            "business_activity": ",".join(
+                request.POST.getlist("business_activity")),
+            "business_sector": ",".join(
+                request.POST.getlist("business_sector")),
         }
         if editing:
             # Token semantics (footgun fix): field khali chhorna = purana
@@ -558,9 +571,14 @@ def seller_profile(request):
         saved = True
         editing = None
         businesses = SellerProfile.objects.filter(user=request.user).order_by("business_name")
+    from .scenario_eligibility import (ACTIVITIES, SECTORS,
+                                       eligible_for_profile)
+    eligible_map = {b.pk: eligible_for_profile(b) for b in businesses}
     return render(request, "digital_invoicing/profile.html",
                   {"businesses": businesses, "editing": editing, "saved": saved,
-                   "provinces": [p[0] for p in SellerProfile.PROVINCES]})
+                   "provinces": [p[0] for p in SellerProfile.PROVINCES],
+                   "iris_activities": ACTIVITIES, "iris_sectors": SECTORS,
+                   "eligible_map": eligible_map})
 
 
 # ---------------------------------------------------------------------------
@@ -569,6 +587,59 @@ def seller_profile(request):
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
 from django.shortcuts import redirect
+
+
+@login_required
+def scenarios_page(request):
+    """FBR sandbox scenarios ki detail listing — kya hai, kis sale type par,
+    kis rate se, aur is user ke kis business ke liye eligible."""
+    from .models import TaxScenario, SellerProfile
+    from .scenario_eligibility import eligible_for_profile
+    from .sandbox_scenarios import build_scenario_payload
+    from . import tax_engine
+
+    businesses = list(SellerProfile.objects.filter(user=request.user)
+                      .order_by("business_name"))
+    biz = request.GET.get("biz", "").strip()
+    selected = None
+    if biz.isdigit():
+        selected = next((b for b in businesses if b.pk == int(biz)), None)
+    if selected is None and businesses:
+        selected = businesses[0]
+    eligible = set(eligible_for_profile(selected)) if selected else set()
+
+    # Engine se rate labels (sale_type -> rate string)
+    rate_map = {}
+    for name, cfg in tax_engine.SALE_TYPES.items():
+        rate_map[name] = cfg.get("rate_label") or (
+            f"{cfg.get('rate')}%" if cfg.get("rate") is not None else "—")
+
+    only_eligible = request.GET.get("eligible") == "1"
+    q = request.GET.get("q", "").strip().lower()
+    rows = []
+    for t in TaxScenario.objects.filter(is_active=True).order_by("code"):
+        # Sample payload se buyer type (doc-verbatim source)
+        buyer = ""
+        try:
+            pl = build_scenario_payload(t.code, selected)
+            buyer = pl.get("buyerRegistrationType", "")
+        except Exception:
+            pass
+        is_elig = t.code in eligible
+        if only_eligible and not is_elig:
+            continue
+        if q and q not in t.code.lower() and q not in t.description.lower() \
+                and q not in t.sale_type.lower():
+            continue
+        rows.append({"code": t.code, "description": t.description,
+                     "sale_type": t.sale_type,
+                     "rate": rate_map.get(t.sale_type, "—"),
+                     "buyer": buyer, "eligible": is_elig})
+    return render(request, "digital_invoicing/scenarios.html", {
+        "rows": rows, "businesses": businesses, "selected": selected,
+        "eligible_count": len(eligible), "only_eligible": only_eligible,
+        "q": request.GET.get("q", ""),
+    })
 
 
 @login_required

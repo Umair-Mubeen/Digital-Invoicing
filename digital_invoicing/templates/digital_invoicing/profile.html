@@ -1,4 +1,4 @@
-{% extends "digital_invoicing/base_di.html" %}
+{% extends "digital_invoicing/base_di.html" %}{% load di_extras %}
 {% block na_profile %}on{% endblock %}
 {% block di_title_text %}Businesses{% endblock %}
 {% block di_title %}Businesses{% endblock %}
@@ -27,13 +27,16 @@
     <h3>Aapke businesses ({{ businesses|length }})</h3>
     {% if businesses %}
     <table class="list">
-      <thead><tr><th>Business</th><th>NTN / CNIC</th><th>Province</th><th></th></tr></thead>
+      <thead><tr><th>Business</th><th>NTN / CNIC</th><th>Province</th><th>Eligible Scenarios</th><th></th></tr></thead>
       <tbody>
       {% for b in businesses %}
         <tr>
           <td style="font-weight:600">{{ b.business_name }}</td>
           <td><span class="fbrno">{{ b.ntn_cnic }}</span></td>
           <td style="color:var(--muted)">{{ b.province }}</td>
+          <td style="font-size:11px">
+            {% for sn in eligible_map|get_item:b.pk %}<a href="{% url 'digital_invoicing:scenarios' %}?biz={{ b.pk }}&eligible=1" class="num" style="background:#eef4fd;border:1px solid #c8dcf5;color:#1d5aa8;border-radius:5px;padding:1px 5px;margin:1px;display:inline-block;text-decoration:none">{{ sn }}</a>{% empty %}<span style="color:var(--faint)">Set nature/sector →</span>{% endfor %}
+          </td>
           <td style="white-space:nowrap">
             <a href="?edit={{ b.pk }}" style="color:var(--green-d);font-weight:600;text-decoration:none">✎ Edit</a>
             <form method="post" style="display:inline" onsubmit="return confirm('Delete this business? Existing invoices stay safe.')">
@@ -87,6 +90,22 @@
           </label>
           {% endif %}
         </div>
+        <div class="field"><label>IRIS Business Nature <span style="text-transform:none;font-weight:400;color:var(--faint)">(same as IRIS enrollment)</span></label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-size:12.5px">
+            {% for a in iris_activities %}
+            <label style="display:flex;gap:7px;align-items:center;cursor:pointer;font-weight:500">
+              <input type="checkbox" name="business_activity" value="{{ a }}"
+                {% if editing and a in editing.business_activity %}checked{% endif %}> {{ a }}</label>
+            {% endfor %}
+          </div></div>
+        <div class="field"><label>IRIS Sector <span style="text-transform:none;font-weight:400;color:var(--faint)">(for sandbox testing)</span></label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-size:12.5px">
+            {% for sec in iris_sectors %}
+            <label style="display:flex;gap:7px;align-items:center;cursor:pointer;font-weight:500">
+              <input type="checkbox" name="business_sector" value="{{ sec }}"
+                {% if editing and sec in editing.business_sector %}checked{% endif %}> {{ sec }}</label>
+            {% endfor %}
+          </div></div>
         <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:6px;cursor:pointer">
           <input type="checkbox" name="use_sandbox" id="sbx" {% if editing.use_sandbox|default:True %}checked{% endif %}>
           Sandbox (testing) mode

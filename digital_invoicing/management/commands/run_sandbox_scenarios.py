@@ -12,6 +12,9 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--user", required=True)
+        parser.add_argument("--all", action="store_true",
+                            help="Sab 28 scenarios (IRIS-eligibility default "
+                                 "ko override)")
         parser.add_argument("--allow-mock", action="store_true",
                             help="Mock client ke against chalne do (sirf dev "
                                  "smoke-test — ye CERTIFICATION NAHI hai)")
@@ -48,6 +51,18 @@ class Command(BaseCommand):
                 "MOCK client active hai — ye asli sandbox test NAHI hoga.\n  - "
                 + "\n  - ".join(why or ["config check karein"])
                 + "\nSirf dev smoke-test chahiye to --allow-mock lagayein.")
+
+        # Default scope: IRIS eligibility (Tech Doc p.47-51) jab profile par
+        # nature/sector set hon aur --only na diya gaya ho
+        if not opts.get("only") and not opts.get("all"):
+            from digital_invoicing.scenario_eligibility import (
+                eligible_for_profile)
+            elig = eligible_for_profile(profile)
+            if elig:
+                opts["only"] = ",".join(elig)
+                self.stdout.write(self.style.WARNING(
+                    f"Scope: {len(elig)} IRIS-eligible scenarios "
+                    f"({opts['only']}) — override with --only/--all"))
 
         mode = "SANDBOX" if profile.use_sandbox else "PRODUCTION"
         if isinstance(client, MockFBRClient):
