@@ -22,6 +22,32 @@ class Buyer(models.Model):
     business_name = models.CharField(max_length=255)
     ntn_cnic = models.CharField(max_length=15, blank=True)
     strn = models.CharField("Sales Tax Reg No (STRN)", max_length=20, blank=True)
+    # Eleventh Schedule (Sales Tax Act 1990, up to 30.06.2026) — ST withholding.
+    # Rate ka inhisaar withholding-agent type + supplier category dono par
+    # hai. Kaunsa serial lagta hai = practitioner ka legal faisla; system
+    # sirf selected serial ke rule se STWH compute karta hai. Fractions/
+    # percentages engine mein WHT_RULES se aate hain.
+    # [VERIFY against current Finance Act before onboarding.]
+    WHT_CHOICES = [
+        ("", "None — not withheld"),
+        ("S1", "S.1 — Govt/company buyer, ATL supplier: 1/5 of ST"),
+        ("S2", "S.2 — Govt/company buyer, ATL wholesaler/dealer/distributor: 1/10 of ST"),
+        ("S3", "S.3 — Govt buyer, non-ATL supplier: whole of ST (gross-value basis)"),
+        ("S4", "S.4 — Company buyer, non-ATL supplier: 5% of gross value"),
+        ("S5", "S.5 — Advertisement services: whole of ST"),
+        ("S6", "S.6 — Cane molasses, non-ATL supplier: whole of ST"),
+        ("S7", "S.7 — Lead/batteries supplier: 80% of ST"),
+        ("S8", "S.8 — Payment intermediary/courier, digital goods: 2% of gross value"),
+        ("S9", "S.9 — Gypsum/limestone to cement mfr: 80% of ST"),
+        ("S10", "S.10 — Coal supplier: 80% of ST"),
+        ("S11", "S.11 — Waste paper/board supplier: 80% of ST"),
+        ("S12", "S.12 — Plastic waste supplier: 80% of ST"),
+        ("S13", "S.13 — Crush stone & silica supplier: 80% of ST"),
+        ("S14", "S.14 — Toll manufacturing, unregistered buyer: 4x tax on conversion charges"),
+    ]
+    withholding_category = models.CharField(max_length=4, blank=True,
+                                            default="",
+                                            choices=WHT_CHOICES)
     registration_type = models.CharField(max_length=20, choices=REG_CHOICES,
                                           default="Unregistered")
     province = models.CharField(max_length=30, choices=PROVINCES, default="Sindh")

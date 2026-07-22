@@ -87,9 +87,18 @@
     <div class="body">
       <form method="post">
         {% csrf_token %}
-        {% if editing %}<input type="hidden" name="edit_id" value="{{ editing.pk }}">{% endif %}
+        {% if editing.pk %}<input type="hidden" name="edit_id" value="{{ editing.pk }}">{% endif %}
+        {% if buyer_error %}<div style="background:#fdecea;border:1px solid #f3c9c9;color:var(--danger);border-radius:10px;padding:11px 13px;font-size:12.5px;font-weight:600;margin-bottom:12px" role="alert">⚠ {{ buyer_error }}</div>{% endif %}
         <div class="field"><label>Business Name *</label>
           <input name="business_name" required value="{{ editing.business_name|default:'' }}"></div>
+        <div class="field"><label>ST Withholding <span style="text-transform:none;font-weight:400;color:var(--faint)">(if buyer is a withholding agent — Eleventh Schedule)</span></label>
+          <select name="withholding_category" style="padding:8px;border:1px solid var(--line);border-radius:8px;width:100%;font-size:12px">
+            {% for val, label in wht_choices %}
+            <option value="{{ val }}" {% if editing.withholding_category == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <div style="font-size:11px;color:var(--faint);margin-top:3px">Eleventh Schedule serial — invoice par STWH khud compute hoga. Applicable serial (agent type + supplier ATL status) confirm karna aap ki zimmedari hai. Toll manufacturing (S.14) manual entry.</div>
+        </div>
         <div class="field"><label>NTN / CNIC</label>
           <input name="ntn_cnic" id="bNtn" value="{{ editing.ntn_cnic|default:'' }}" inputmode="numeric" oninput="ntnCheck(this)">
           <div id="ntnHint" style="font-size:11.5px;margin-top:3px;color:var(--faint)">7 digits (NTN) or 13 digits (CNIC)</div></div>
@@ -137,9 +146,14 @@ function exportCSV(){
   a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:'text/csv'}));
   a.download='buyers.csv'; a.click();
 }
+const SELLER_IDS = {{ seller_ids_json|safe }};
 function ntnCheck(i){
   const v=i.value.replace(/[^0-9]/g,''), h=document.getElementById('ntnHint');
   if(!v){ h.textContent='7 digits (NTN) or 13 digits (CNIC)'; h.style.color='var(--faint)'; return; }
+  if(SELLER_IDS.indexOf(v)!==-1){
+    h.textContent='✗ Ye aapke apne business ka NTN/STRN hai — buyer alag entity honi chahiye (FBR error 0058)';
+    h.style.color='var(--danger)'; return;
+  }
   if(v.length===7){ h.textContent='✓ Valid NTN format'; h.style.color='var(--green-d)'; }
   else if(v.length===13){ h.textContent='✓ Valid CNIC format'; h.style.color='var(--green-d)'; }
   else { h.textContent='⚠ '+v.length+' digits — NTN must be 7 or CNIC 13 (avoids FBR error 0002)'; h.style.color='#b8860b'; }

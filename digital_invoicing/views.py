@@ -390,7 +390,7 @@ def create_invoice(request):
     from .models import Buyer, SavedItem
     buyers_json = [{"id": b.pk, "name": b.business_name, "ntn": b.ntn_cnic,
                     "reg": b.registration_type, "province": b.province,
-                    "address": b.address}
+                    "address": b.address, "wht": b.withholding_category}
                    for b in Buyer.objects.filter(owner=request.user)[:200]]
     items_json = [{"hs": i.hs_code, "desc": i.description, "st": i.sale_type,
                    "uom": i.uom, "val": float(i.last_value)}
@@ -1110,7 +1110,9 @@ def _atl_status_for(user, reg_no, period=None):
 @login_required
 def buyers(request):
     """Buyers manager — list + add/edit/delete + ATL status column."""
+    import json as _json
     from .models import Buyer
+    from .models import SellerProfile as _SP
     from django.db.models import Q as _Q
     all_rows = Buyer.objects.filter(owner=request.user)
     rows = all_rows
@@ -1129,23 +1131,40 @@ def buyers(request):
         rows.filter(pk=request.POST.get("delete_id")).delete()
         return redirect("digital_invoicing:buyers")
 
+    buyer_error = ""
     if request.method == "POST" and not request.POST.get("delete_id"):
         data = {
             "business_name": request.POST.get("business_name", "").strip(),
             "ntn_cnic": request.POST.get("ntn_cnic", "").strip(),
             "strn": request.POST.get("strn", "").strip(),
             "registration_type": request.POST.get("registration_type", "Unregistered"),
+            "withholding_category": request.POST.get("withholding_category", ""),
             "province": request.POST.get("province", "Sindh"),
             "address": request.POST.get("address", "").strip(),
         }
-        if editing:
-            for k, v in data.items():
-                setattr(editing, k, v)
-            editing.save()
+        # 0058 (add-time): buyer ka NTN/STRN seller ke apne registration se
+        # match nahi kar sakta — invoice submit se pehle yahin pakro.
+        seller_ids = set()
+        for sp in _SP.objects.filter(user=request.user):
+            for v in (sp.ntn_cnic, getattr(sp, "strn", "")):
+                if (v or "").strip():
+                    seller_ids.add(v.strip())
+        clash = (data["ntn_cnic"] and data["ntn_cnic"] in seller_ids) or \
+                (data["strn"] and data["strn"] in seller_ids)
+        if clash:
+            buyer_error = ("Buyer aur Seller ka Registration No. same nahi ho "
+                           "sakta (FBR error 0058) — ye aapke apne business ka "
+                           "NTN/STRN hai. Buyer alag entity honi chahiye.")
+            editing = data          # form dubara bhar do
         else:
-            Buyer.objects.create(owner=request.user, **data)
-        saved = True
-        editing = None
+            if editing:
+                for k, v in data.items():
+                    setattr(editing, k, v)
+                editing.save()
+            else:
+                Buyer.objects.create(owner=request.user, **data)
+            saved = True
+            editing = None
         rows = Buyer.objects.filter(owner=request.user)
 
     period = _current_period()
@@ -1163,12 +1182,17 @@ def buyers(request):
         "unregistered": all_rows.filter(registration_type="Unregistered").count(),
         "atl_active": atl_active,
     }
+    from .models import Buyer as _B
     return render(request, "digital_invoicing/buyers.html", {
+        "wht_choices": _B.WHT_CHOICES,
         "q": bq, "reg": breg, "stats": stats,
         "buyer_list": buyer_list, "editing": editing, "saved": saved,
         "provinces": [p[0] for p in SellerProfile.PROVINCES],
         "reg_types": ["Registered", "Unregistered"],
-        "period": period,
+        "period": period, "buyer_error": buyer_error,
+        "seller_ids_json": _json.dumps(sorted(
+            {v.strip() for sp in _SP.objects.filter(user=request.user)
+             for v in (sp.ntn_cnic, getattr(sp, "strn", "")) if (v or "").strip()})),
     })
 
 

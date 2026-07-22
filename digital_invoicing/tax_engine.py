@@ -352,3 +352,46 @@ def compute_invoice(items, buyer_unregistered=False):
         "total_further_tax": _money(tft),
         "invoice_total": _money(tv + tst + tft),
     }
+
+
+# ---------------------------------------------------------------------------
+# Eleventh Schedule (Sales Tax Act 1990) — ST withholding rules.
+# basis: "st" = fraction OF SALES TAX; "gross" = % OF (value + ST);
+#        "conv" = multiple of tax on conversion charges (toll mfg).
+# rate: st/gross ke liye fraction (0-1+), conv ke liye multiplier.
+# [VERIFY against current Finance Act — budget mein badalte hain]
+# ---------------------------------------------------------------------------
+WHT_RULES = {
+    "S1":  {"basis": "st",    "rate": 0.20},   # 1/5 of ST
+    "S2":  {"basis": "st",    "rate": 0.10},   # 1/10 of ST
+    "S3":  {"basis": "st",    "rate": 1.00},   # whole of ST
+    "S4":  {"basis": "gross", "rate": 0.05},   # 5% of gross value
+    "S5":  {"basis": "st",    "rate": 1.00},   # whole of ST (advertisement)
+    "S6":  {"basis": "st",    "rate": 1.00},   # whole of ST (cane molasses)
+    "S7":  {"basis": "st",    "rate": 0.80},   # 80% of ST (lead/batteries)
+    "S8":  {"basis": "gross", "rate": 0.02},   # 2% of gross (digital goods)
+    "S9":  {"basis": "st",    "rate": 0.80},   # 80% (gypsum->cement)
+    "S10": {"basis": "st",    "rate": 0.80},   # 80% (coal)
+    "S11": {"basis": "st",    "rate": 0.80},   # 80% (waste paper)
+    "S12": {"basis": "st",    "rate": 0.80},   # 80% (plastic waste)
+    "S13": {"basis": "st",    "rate": 0.80},   # 80% (crush stone/silica)
+    "S14": {"basis": "conv",  "rate": 4.00},   # 4x tax on conversion charges
+}
+
+
+def compute_withheld(serial, sales_tax, value_excl_st,
+                     conversion_tax=0.0):
+    """Selected Eleventh-Schedule serial se STWH amount. Classification
+    caller (practitioner) deta hai; ye sirf arithmetic karta hai."""
+    rule = WHT_RULES.get(serial or "")
+    if not rule:
+        return 0.0
+    st = float(sales_tax or 0)
+    if rule["basis"] == "st":
+        return round(st * rule["rate"], 2)
+    if rule["basis"] == "gross":
+        gross = float(value_excl_st or 0) + st
+        return round(gross * rule["rate"], 2)
+    if rule["basis"] == "conv":
+        return round(float(conversion_tax or 0) * rule["rate"], 2)
+    return 0.0

@@ -2684,3 +2684,111 @@ class ScenariosPageTests(TestCase):
     def test_sidebar_link_present(self):
         r = self.client.get("/digital-invoicing/dashboard/")
         self.assertContains(r, 'href="/digital-invoicing/scenarios/"')
+
+
+class WithholdingTaxTests(TestCase):
+    """Eleventh Schedule ST withholding — buyer WHT category -> STWH."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user("wht", password="x")
+        SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567", business_name="S",
+            province="Sindh", address="K")
+        self.client.login(username="wht", password="x")
+
+    def test_buyer_saves_wht_category(self):
+        self.client.post("/digital-invoicing/buyers/", {
+            "business_name": "Govt Dept", "ntn_cnic": "7654321",
+            "registration_type": "Registered", "province": "Sindh",
+            "address": "K", "withholding_category": "S1"})
+        from .models import Buyer
+        b = Buyer.objects.get(business_name="Govt Dept")
+        self.assertEqual(b.withholding_category, "S1")
+
+    def test_wht_in_buyers_json(self):
+        from .models import Buyer
+        Buyer.objects.create(owner=self.user, business_name="WA",
+                             ntn_cnic="7654321",
+                             registration_type="Registered",
+                             province="Sindh", withholding_category="S2")
+        r = self.client.get("/digital-invoicing/create/")
+        self.assertContains(r, '"wht": "S2"')
+
+    def test_wht_rules_in_template(self):
+        r = self.client.get("/digital-invoicing/create/")
+        self.assertContains(r, 'WHT_RULES')
+        self.assertContains(r, 'whtAmount')
+
+    def test_compute_withheld_all_bases(self):
+        from .tax_engine import compute_withheld
+        # S1: 1/5 of ST
+        self.assertEqual(compute_withheld("S1", 1800, 10000), 360.0)
+        # S2: 1/10 of ST
+        self.assertEqual(compute_withheld("S2", 1800, 10000), 180.0)
+        # S3: whole of ST
+        self.assertEqual(compute_withheld("S3", 1800, 10000), 1800.0)
+        # S4: 5% of gross (value+ST)
+        self.assertEqual(compute_withheld("S4", 1800, 10000), 590.0)
+        # S7: 80% of ST
+        self.assertEqual(compute_withheld("S7", 1800, 10000), 1440.0)
+        # S8: 2% of gross
+        self.assertEqual(compute_withheld("S8", 1800, 10000), 236.0)
+        # S14: 4x conversion tax
+        self.assertEqual(compute_withheld("S14", 0, 0, conversion_tax=500), 2000.0)
+        # none
+        self.assertEqual(compute_withheld("", 1800, 10000), 0.0)
+
+    def test_choices_validated(self):
+        from .models import Buyer
+        b = Buyer(owner=self.user, business_name="X",
+                  registration_type="Registered", province="Sindh",
+                  withholding_category="S1")
+        b.full_clean()   # valid choice
+        b.withholding_category = "S99"
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError):
+            b.full_clean()
+
+
+class BuyerSellerClashTests(TestCase):
+    """0058 at add-time — buyer NTN/STRN can't equal seller's own."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user("clash", password="x")
+        self.sp = SellerProfile.objects.create(
+            user=self.user, ntn_cnic="1234567",
+            business_name="My Biz", province="Sindh", address="K")
+        self.client.login(username="clash", password="x")
+
+    def test_buyer_with_seller_ntn_blocked(self):
+        from .models import Buyer
+        r = self.client.post("/digital-invoicing/buyers/", {
+            "business_name": "Fake", "ntn_cnic": "1234567",
+            "registration_type": "Registered", "province": "Sindh",
+            "address": "K"})
+        self.assertContains(r, "0058")
+        self.assertFalse(Buyer.objects.filter(business_name="Fake").exists())
+
+    def test_buyer_strn_equal_seller_ntn_blocked(self):
+        from .models import Buyer
+        r = self.client.post("/digital-invoicing/buyers/", {
+            "business_name": "Fake2", "ntn_cnic": "7654321",
+            "strn": "1234567", "registration_type": "Registered",
+            "province": "Sindh", "address": "K"})
+        self.assertContains(r, "0058")
+        self.assertFalse(Buyer.objects.filter(business_name="Fake2").exists())
+
+    def test_different_ntn_saves(self):
+        from .models import Buyer
+        r = self.client.post("/digital-invoicing/buyers/", {
+            "business_name": "Real Buyer", "ntn_cnic": "7654321",
+            "registration_type": "Registered", "province": "Sindh",
+            "address": "K"})
+        self.assertTrue(Buyer.objects.filter(business_name="Real Buyer").exists())
+
+    def test_seller_ids_exposed_to_js(self):
+        r = self.client.get("/digital-invoicing/buyers/")
+        self.assertContains(r, "SELLER_IDS")
+        self.assertContains(r, "1234567")

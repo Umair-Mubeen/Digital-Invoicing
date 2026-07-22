@@ -254,6 +254,32 @@
 /* ---- Businesses (seller dropdown) ---- */
 const BIZ = JSON.parse(document.getElementById('bizData').textContent);
 const BUYERS = JSON.parse(document.getElementById('buyerData').textContent);
+/* Eleventh Schedule STWH rules — engine WHT_RULES ka mirror */
+const WHT_RULES = {
+  "S1":{b:"st",r:0.20},"S2":{b:"st",r:0.10},"S3":{b:"st",r:1.00},
+  "S4":{b:"gross",r:0.05},"S5":{b:"st",r:1.00},"S6":{b:"st",r:1.00},
+  "S7":{b:"st",r:0.80},"S8":{b:"gross",r:0.02},"S9":{b:"st",r:0.80},
+  "S10":{b:"st",r:0.80},"S11":{b:"st",r:0.80},"S12":{b:"st",r:0.80},
+  "S13":{b:"st",r:0.80},"S14":{b:"conv",r:4.00}
+};
+function whtAmount(serial, st, valueExcl){
+  const rule = WHT_RULES[serial]; if(!rule) return 0;
+  if(rule.b==="st") return Math.round(st*rule.r*100)/100;
+  if(rule.b==="gross") return Math.round(((+valueExcl||0)+st)*rule.r*100)/100;
+  return 0;  // conv (toll mfg) — conversion charges alag input, v1 mein manual
+}
+let currentWht = "";
+function whtBadge(){
+  let el = document.getElementById('whtBadge');
+  if(!el){
+    el = document.createElement('span'); el.id='whtBadge';
+    el.style.cssText='margin-left:8px;font-size:11px;font-weight:700;background:#fdf6e1;border:1px solid #ecd9a0;color:#8a6508;border-radius:999px;padding:2px 9px;vertical-align:middle';
+    const t = document.getElementById('buyerBusinessName');
+    if(t && t.parentElement) t.parentElement.appendChild(el);
+  }
+  if(currentWht){ el.textContent = 'ST withheld · ' + currentWht; el.style.display=''; }
+  else el.style.display='none';
+}
 const SAVED = JSON.parse(document.getElementById('itemData').textContent);
 
 /* ---- Toasts (alert ki jagah) ---- */
@@ -297,6 +323,7 @@ function buyerSuggest(input){
       document.getElementById('buyerRegistrationType').value=b.reg;
       document.getElementById('buyerProvince').value=b.province;
       document.getElementById('buyerAddress').value=b.address||'';
+      currentWht = b.wht || ""; whtBadge();
       recalc(); closeBuyer();
       const badge=document.getElementById('buyerBadge');
       if(badge){ badge.textContent='✓ saved buyer'; badge.className='badge-ok'; }
@@ -591,7 +618,8 @@ function buildPayload(){
         valueSalesExcludingST:(+it.value)||0,
         fixedNotifiedValueOrRetailPrice: SALE_TYPES[it.saleType].retail?(((+it.mrp)||(+it.value))||0):0,
         salesTaxApplicable: Math.round(c.st*100)/100,
-        salesTaxWithheldAtSource:0, extraTax:"",
+        salesTaxWithheldAtSource: whtAmount(currentWht, c.st, (+it.value)||0),
+        extraTax:"",
         furtherTax: Math.round(c.ft*100)/100,
         sroScheduleNo:c.sro, fedPayable:0, discount:0,
         saleType:it.saleType,
